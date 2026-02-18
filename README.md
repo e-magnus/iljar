@@ -57,13 +57,17 @@ Generate Prisma Client:
 npx prisma generate
 ```
 
-### 4. Seed Data (Optional)
+### 4. Seed Data (Required for Login)
 
-Populate the database with synthetic test data:
+Populate the database with synthetic test data including a test user:
 
 ```bash
 npm run seed
 ```
+
+This creates a test user with credentials:
+- **Email**: `clinician@iljar.is`
+- **Password**: `password123`
 
 ### 5. Run Development Server
 
@@ -71,7 +75,7 @@ npm run seed
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+Open [http://localhost:3000/login](http://localhost:3000/login) in your browser and log in with the test credentials above.
 
 ## Available Scripts
 
