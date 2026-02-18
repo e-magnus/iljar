@@ -1,0 +1,139 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// User model for clinician authentication
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  totpSecret    String?
+  totpEnabled   Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+// Client represents a patient
+model Client {
+  id           String        @id @default(cuid())
+  name         String
+  phone        String
+  kennitala    String?       // Optional Icelandic personal ID
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  appointments Appointment[]
+}
+
+// Appointment represents a scheduled time slot
+model Appointment {
+  id        String            @id @default(cuid())
+  clientId  String
+  client    Client            @relation(fields: [clientId], references: [id])
+  startTime DateTime
+  endTime   DateTime
+  status    AppointmentStatus @default(BOOKED)
+  type      String?
+  note      String?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  visits    Visit[]
+
+  @@index([startTime])
+  @@index([clientId])
+}
+
+enum AppointmentStatus {
+  BOOKED
+  ARRIVED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+// Visit represents a clinical visit with SOAP notes
+model Visit {
+  id            String   @id @default(cuid())
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id])
+  soapS         String?  // Subjective
+  soapO         String?  // Objective
+  soapA         String?  // Assessment
+  soapP         String?  // Plan
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  photos        Photo[]
+
+  @@index([appointmentId])
+}
+
+// Photo represents an uploaded image
+model Photo {
+  id               String    @id @default(cuid())
+  visitId          String
+  visit            Visit     @relation(fields: [visitId], references: [id])
+  fileKey          String    // S3 object key
+  type             PhotoType
+  consentSignedAt  DateTime
+  createdAt        DateTime  @default(now())
+
+  @@index([visitId])
+}
+
+enum PhotoType {
+  BEFORE
+  AFTER
+}
+
+// AvailabilityRule defines weekly working hours
+model AvailabilityRule {
+  id            String    @id @default(cuid())
+  weekday       Int       // 0-6 (Sunday-Saturday)
+  startTime     String    // HH:MM format
+  endTime       String    // HH:MM format
+  effectiveFrom DateTime?
+  effectiveTo   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([weekday])
+}
+
+// TimeOff represents blocked time (vacation, etc.)
+model TimeOff {
+  id            String   @id @default(cuid())
+  startDatetime DateTime
+  endDatetime   DateTime
+  reason        String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([startDatetime, endDatetime])
+}
+
+// AuditLog tracks changes to sensitive data
+model AuditLog {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  action     String
+  userId     String?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+// Settings for slot generation
+model Settings {
+  id            String   @id @default(cuid())
+  slotLength    Int      @default(30)  // minutes
+  bufferTime    Int      @default(5)   // minutes between appointments
+  updatedAt     DateTime @updatedAt
+}
