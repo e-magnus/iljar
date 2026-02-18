@@ -9,7 +9,8 @@
     "lint": "eslint",
     "seed": "tsx prisma/seed.ts",
     "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "perf:test": "tsx scripts/performance-test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.992.0",
