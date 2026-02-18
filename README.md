@@ -113,6 +113,47 @@ iljar/
 - Signed URLs for image access
 - No real patient data in development/test environments
 
+## Database Backups
+
+The project includes an automated backup script for PostgreSQL databases.
+
+### Setting up daily backups
+
+1. Configure environment variables in `/etc/cron.daily/iljar-backup`:
+
+```bash
+export DB_NAME="iljar_production"
+export DB_USER="postgres"
+export DB_PASSWORD="your-password"
+export DB_HOST="localhost"
+export DB_PORT="5432"
+export BACKUP_DIR="/var/backups/iljar"
+export RETENTION_DAYS="30"
+
+/path/to/iljar/scripts/backup.sh
+```
+
+2. Make the cron script executable:
+
+```bash
+sudo chmod +x /etc/cron.daily/iljar-backup
+```
+
+3. Test the backup:
+
+```bash
+sudo /etc/cron.daily/iljar-backup
+```
+
+Backups are compressed and retained for 30 days by default. Old backups are automatically removed.
+
+### Manual backup
+
+```bash
+cd scripts
+./backup.sh
+```
+
 ## MVP Milestones
 
 ### M1: Core Scheduling Demo

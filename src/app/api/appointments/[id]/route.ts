@@ -48,12 +48,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const body = await request.json();
     const { status, note } = body;
 
-    interface UpdateData {
-      status?: string;
-      note?: string;
-    }
-
-    const data: UpdateData = {};
+    const data: {
+      status?: 'BOOKED' | 'ARRIVED' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
+      note?: string | null;
+    } = {};
+    
     if (status) data.status = status;
     if (note !== undefined) data.note = note;
 

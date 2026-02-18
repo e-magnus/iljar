@@ -2,6 +2,7 @@
 
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Image from 'next/image';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/Card';
 
@@ -37,6 +38,12 @@ const templates: SOAPTemplate[] = [
   },
 ];
 
+interface Photo {
+  file: File;
+  type: 'BEFORE' | 'AFTER';
+  preview: string;
+}
+
 function NewVisitForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -46,8 +53,10 @@ function NewVisitForm() {
   const [soapO, setSoapO] = useState('');
   const [soapA, setSoapA] = useState('');
   const [soapP, setSoapP] = useState('');
+  const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [consentGiven, setConsentGiven] = useState(false);
 
   const handleTemplateSelect = (template: SOAPTemplate) => {
     setSoapS(template.s);
@@ -55,6 +64,63 @@ function NewVisitForm() {
     setSoapA(template.a);
     setSoapP(template.p);
     setShowTemplates(false);
+  };
+
+  const handlePhotoAdd = (e: React.ChangeEvent<HTMLInputElement>, type: 'BEFORE' | 'AFTER') => {
+    const files = e.target.files;
+    if (!files) return;
+
+    const newPhotos: Photo[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      newPhotos.push({
+        file,
+        type,
+        preview: URL.createObjectURL(file),
+      });
+    }
+
+    setPhotos([...photos, ...newPhotos]);
+  };
+
+  const handlePhotoRemove = (index: number) => {
+    const newPhotos = [...photos];
+    URL.revokeObjectURL(newPhotos[index].preview);
+    newPhotos.splice(index, 1);
+    setPhotos(newPhotos);
+  };
+
+  const uploadPhoto = async (visitId: string, photo: Photo) => {
+    // Get signed upload URL
+    const urlRes = await fetch('/api/photos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        visitId,
+        filename: photo.file.name,
+        contentType: photo.file.type,
+        photoType: photo.type,
+      }),
+    });
+
+    if (!urlRes.ok) {
+      throw new Error('Failed to get upload URL');
+    }
+
+    const { uploadUrl } = await urlRes.json();
+
+    // Upload file to S3
+    const uploadRes = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': photo.file.type,
+      },
+      body: photo.file,
+    });
+
+    if (!uploadRes.ok) {
+      throw new Error('Failed to upload photo');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -65,8 +131,14 @@ function NewVisitForm() {
       return;
     }
 
+    if (photos.length > 0 && !consentGiven) {
+      alert('Vinsamlegast staðfestu samþykki fyrir myndatöku');
+      return;
+    }
+
     setLoading(true);
     try {
+      // Create visit
       const res = await fetch('/api/visits', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -79,11 +151,21 @@ function NewVisitForm() {
         }),
       });
 
-      if (res.ok) {
-        router.push(`/appointments/${appointmentId}`);
-      } else {
+      if (!res.ok) {
         alert('Villa við að vista heimsókn');
+        return;
       }
+
+      const { visit } = await res.json();
+
+      // Upload photos if any
+      if (photos.length > 0) {
+        for (const photo of photos) {
+          await uploadPhoto(visit.id, photo);
+        }
+      }
+
+      router.push(`/appointments/${appointmentId}`);
     } catch (error) {
       console.error('Error saving visit:', error);
       alert('Villa við að vista heimsókn');
@@ -205,6 +287,93 @@ function NewVisitForm() {
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder="T.d. Teygjanæfingar. Endurmat eftir 2 vikur..."
             />
+          </CardContent>
+        </Card>
+
+        {/* Photo Upload */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Myndir</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {/* Photo Grid */}
+              {photos.length > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  {photos.map((photo, index) => (
+                    <div key={index} className="relative">
+                      <Image
+                        src={photo.preview}
+                        alt={`${photo.type} ${index + 1}`}
+                        width={200}
+                        height={128}
+                        className="w-full h-32 object-cover rounded-lg"
+                        unoptimized
+                      />
+                      <div className="absolute top-2 left-2 px-2 py-1 bg-black bg-opacity-70 text-white text-xs rounded">
+                        {photo.type}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handlePhotoRemove(index)}
+                        className="absolute top-2 right-2 w-6 h-6 bg-red-600 text-white rounded-full hover:bg-red-700"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Upload Buttons */}
+              <div className="flex gap-4">
+                <label className="flex-1">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(e) => handlePhotoAdd(e, 'BEFORE')}
+                    className="hidden"
+                  />
+                  <Button type="button" variant="outline" className="w-full" onClick={(e) => {
+                    e.preventDefault();
+                    (e.currentTarget.previousElementSibling as HTMLInputElement)?.click();
+                  }}>
+                    📷 Fyrir mynd
+                  </Button>
+                </label>
+                <label className="flex-1">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(e) => handlePhotoAdd(e, 'AFTER')}
+                    className="hidden"
+                  />
+                  <Button type="button" variant="outline" className="w-full" onClick={(e) => {
+                    e.preventDefault();
+                    (e.currentTarget.previousElementSibling as HTMLInputElement)?.click();
+                  }}>
+                    📷 Eftir mynd
+                  </Button>
+                </label>
+              </div>
+
+              {/* Consent Checkbox */}
+              {photos.length > 0 && (
+                <label className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    checked={consentGiven}
+                    onChange={(e) => setConsentGiven(e.target.checked)}
+                    className="mt-1"
+                  />
+                  <span className="text-sm text-gray-700">
+                    Ég staðfesti að skjólstæðingur hefur veitt samþykki fyrir myndatöku og geymslu mynda í tengslum við meðferð.
+                  </span>
+                </label>
+              )}
+            </div>
           </CardContent>
         </Card>
 
