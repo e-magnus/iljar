@@ -48,7 +48,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const body = await request.json();
     const { status, note } = body;
 
-    const data: any = {};
+    interface UpdateData {
+      status?: string;
+      note?: string;
+    }
+
+    const data: UpdateData = {};
     if (status) data.status = status;
     if (note !== undefined) data.note = note;
 

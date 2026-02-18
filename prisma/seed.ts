@@ -20,7 +20,7 @@ async function main() {
   console.log('✓ Created user:', user.email);
 
   // Create settings
-  const settings = await prisma.settings.upsert({
+  await prisma.settings.upsert({
     where: { id: 'default' },
     update: {},
     create: {
@@ -98,15 +98,14 @@ async function main() {
     endTime.setMinutes(endTime.getMinutes() + 30);
     
     const clientIndex = i % clients.length;
-    const statuses = ['BOOKED', 'ARRIVED', 'COMPLETED'];
-    const status = i < 10 ? 'COMPLETED' : i < 20 ? 'BOOKED' : 'BOOKED';
+    const status = i < 10 ? 'COMPLETED' : 'BOOKED';
     
     const appointment = await prisma.appointment.create({
       data: {
         clientId: clients[clientIndex].id,
         startTime,
         endTime,
-        status: status as any,
+        status,
         type: i % 3 === 0 ? 'First Visit' : 'Follow-up',
         note: i % 5 === 0 ? 'Patient requested early appointment' : null,
       },

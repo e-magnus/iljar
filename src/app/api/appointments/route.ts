@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ appointment });
     }
 
-    const where: any = {};
+    const where: { clientId?: string } = {};
     if (clientId) {
       where.clientId = clientId;
     }

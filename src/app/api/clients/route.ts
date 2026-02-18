@@ -6,7 +6,15 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get('search');
 
-    const where: any = {};
+    interface WhereClause {
+      OR?: Array<{
+        name?: { contains: string; mode: 'insensitive' };
+        phone?: { contains: string };
+        kennitala?: { contains: string };
+      }>;
+    }
+
+    const where: WhereClause = {};
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
