@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/Card';
+import { authFetch } from '@/lib/api/client';
 
 interface Visit {
   id: string;
@@ -39,7 +40,7 @@ export default function AppointmentDetailPage() {
   useEffect(() => {
     async function fetchAppointment() {
       try {
-        const res = await fetch(`/api/appointments/${params.id}`);
+        const res = await authFetch(`/api/appointments/${params.id}`);
         if (res.ok) {
           const data = await res.json();
           setAppointment(data.appointment);
@@ -58,7 +59,7 @@ export default function AppointmentDetailPage() {
 
   const handleMarkArrived = async () => {
     try {
-      const res = await fetch(`/api/appointments/${params.id}`, {
+      const res = await authFetch(`/api/appointments/${params.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'ARRIVED' }),

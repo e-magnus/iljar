@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
+import { requireAuth } from '@/lib/auth/guard';
 
 interface RouteParams {
   params: Promise<{
@@ -9,6 +10,11 @@ interface RouteParams {
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
+    const auth = requireAuth(request);
+    if (!auth.ok) {
+      return auth.response;
+    }
+
     const { id } = await params;
 
     const appointment = await prisma.appointment.findUnique({
@@ -44,6 +50,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
+    const auth = requireAuth(request);
+    if (!auth.ok) {
+      return auth.response;
+    }
+
     const { id } = await params;
     const body = await request.json();
     const { status, note } = body;

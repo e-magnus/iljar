@@ -3,6 +3,10 @@ import bcrypt from 'bcryptjs';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-change-me';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'default-refresh-secret';
+const JWT_EXPIRES_IN: SignOptions['expiresIn'] =
+  (process.env.JWT_EXPIRES_IN as SignOptions['expiresIn']) || '15m';
+const JWT_REFRESH_EXPIRES_IN: SignOptions['expiresIn'] =
+  (process.env.JWT_REFRESH_EXPIRES_IN as SignOptions['expiresIn']) || '7d';
 
 export interface TokenPayload {
   userId: string;
@@ -11,14 +15,14 @@ export interface TokenPayload {
 
 export function generateAccessToken(payload: TokenPayload): string {
   const options: SignOptions = {
-    expiresIn: '15m',
+    expiresIn: JWT_EXPIRES_IN,
   };
   return jwt.sign(payload, JWT_SECRET, options);
 }
 
 export function generateRefreshToken(payload: TokenPayload): string {
   const options: SignOptions = {
-    expiresIn: '7d',
+    expiresIn: JWT_REFRESH_EXPIRES_IN,
   };
   return jwt.sign(payload, JWT_REFRESH_SECRET, options);
 }

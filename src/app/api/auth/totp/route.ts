@@ -1,33 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
-import { verifyAccessToken } from '@/lib/auth/jwt';
 import { generateTOTPSecret, verifyTOTP } from '@/lib/auth/totp';
+import { requireAuth } from '@/lib/auth/guard';
 
 // Generate TOTP secret and QR code
 export async function POST(request: NextRequest) {
   try {
-    // Verify user is authenticated
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    const token = authHeader.substring(7);
-    let payload;
-    try {
-      payload = verifyAccessToken(token);
-    } catch {
-      return NextResponse.json(
-        { error: 'Invalid token' },
-        { status: 401 }
-      );
+    const auth = requireAuth(request);
+    if (!auth.ok) {
+      return auth.response;
     }
 
     const user = await prisma.user.findUnique({
-      where: { id: payload.userId },
+      where: { id: auth.payload.userId },
     });
 
     if (!user) {
@@ -62,24 +47,9 @@ export async function POST(request: NextRequest) {
 // Enable TOTP after verification
 export async function PATCH(request: NextRequest) {
   try {
-    // Verify user is authenticated
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    const token = authHeader.substring(7);
-    let payload;
-    try {
-      payload = verifyAccessToken(token);
-    } catch {
-      return NextResponse.json(
-        { error: 'Invalid token' },
-        { status: 401 }
-      );
+    const auth = requireAuth(request);
+    if (!auth.ok) {
+      return auth.response;
     }
 
     const body = await request.json();
@@ -93,7 +63,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const user = await prisma.user.findUnique({
-      where: { id: payload.userId },
+      where: { id: auth.payload.userId },
     });
 
     if (!user || !user.totpSecret) {

@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateSlots, findNextAvailableSlot } from '@/lib/services/slots';
+import { requireAuth } from '@/lib/auth/guard';
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = requireAuth(request);
+    if (!auth.ok) {
+      return auth.response;
+    }
+
     const searchParams = request.nextUrl.searchParams;
     const dateParam = searchParams.get('date');
     const nextOnly = searchParams.get('next') === 'true';

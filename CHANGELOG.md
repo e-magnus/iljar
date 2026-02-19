@@ -4,6 +4,24 @@ All notable changes to the iljar project.
 
 ## [Unreleased]
 
+### Changed
+
+- `npm run dev` now bootstraps local development automatically by running DB startup/migrations (`db:up`), checking seed presence, and only seeding when data is missing.
+- Added `npm run dev:app` for starting `next dev` without DB/seed bootstrap.
+
+### Added
+
+- Auth/route-protection smoke test suite (`npm run test:auth`) covering:
+  - auth guard behavior for missing/valid bearer token
+  - protected route `401` behavior
+  - refresh error contract (`REFRESH_REQUIRED`, `REFRESH_INVALID`)
+  - public login route accessibility
+- `scripts/ensure-seed.ts` helper to detect seed baseline and run `npm run seed` only when needed.
+
+### Fixed
+
+- Production build TypeScript compatibility in JWT token generation by aligning `expiresIn` env values with `jsonwebtoken` `SignOptions` typings.
+
 ### Added
 
 #### Foundation (MVP-001 to MVP-002)

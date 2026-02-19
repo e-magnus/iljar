@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/Card';
+import { authFetch } from '@/lib/api/client';
 
 interface SOAPTemplate {
   name: string;
@@ -92,7 +93,7 @@ function NewVisitForm() {
 
   const uploadPhoto = async (visitId: string, photo: Photo) => {
     // Get signed upload URL
-    const urlRes = await fetch('/api/photos', {
+    const urlRes = await authFetch('/api/photos', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -139,7 +140,7 @@ function NewVisitForm() {
     setLoading(true);
     try {
       // Create visit
-      const res = await fetch('/api/visits', {
+      const res = await authFetch('/api/visits', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -230,7 +231,7 @@ function NewVisitForm() {
               value={soapS}
               onChange={(e) => setSoapS(e.target.value)}
               rows={4}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 placeholder-gray-400 focus:border-transparent focus:ring-2 focus:ring-blue-500"
               placeholder="T.d. Sjúklingur kvartar yfir verkjum í hæl..."
             />
           </CardContent>
@@ -248,7 +249,7 @@ function NewVisitForm() {
               value={soapO}
               onChange={(e) => setSoapO(e.target.value)}
               rows={4}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 placeholder-gray-400 focus:border-transparent focus:ring-2 focus:ring-blue-500"
               placeholder="T.d. Væg bólga greinist. Eðlileg hreyfigeta..."
             />
           </CardContent>
@@ -266,7 +267,7 @@ function NewVisitForm() {
               value={soapA}
               onChange={(e) => setSoapA(e.target.value)}
               rows={4}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 placeholder-gray-400 focus:border-transparent focus:ring-2 focus:ring-blue-500"
               placeholder="T.d. Líkleg plantarfasciitis..."
             />
           </CardContent>
@@ -284,7 +285,7 @@ function NewVisitForm() {
               value={soapP}
               onChange={(e) => setSoapP(e.target.value)}
               rows={4}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 placeholder-gray-400 focus:border-transparent focus:ring-2 focus:ring-blue-500"
               placeholder="T.d. Teygjanæfingar. Endurmat eftir 2 vikur..."
             />
           </CardContent>

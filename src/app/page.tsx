@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/Card';
+import { authFetch } from '@/lib/api/client';
 
 interface Appointment {
   id: string;
@@ -31,12 +32,12 @@ export default function Home() {
     async function fetchData() {
       try {
         // Fetch next appointment
-        const appointmentRes = await fetch('/api/appointments?next=true');
+        const appointmentRes = await authFetch('/api/appointments?next=true');
         const appointmentData = await appointmentRes.json();
         setNextAppointment(appointmentData.appointment);
 
         // Fetch next available slot
-        const slotRes = await fetch('/api/slots?next=true');
+        const slotRes = await authFetch('/api/slots?next=true');
         const slotData = await slotRes.json();
         setNextSlot(slotData.slot);
       } catch (error) {

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/Card';
+import { setSessionTokens } from '@/lib/auth/session';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -33,9 +34,7 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (res.ok) {
-        // Store tokens in localStorage
-        localStorage.setItem('accessToken', data.accessToken);
-        localStorage.setItem('refreshToken', data.refreshToken);
+        setSessionTokens(data.accessToken, data.refreshToken);
         
         // Redirect to dashboard
         router.push('/');
@@ -47,7 +46,7 @@ export default function LoginPage() {
           setError(data.error || 'Innskráning mistókst');
         }
       }
-    } catch (err) {
+    } catch {
       setError('Villa við að tengjast þjóni');
     } finally {
       setLoading(false);
@@ -82,7 +81,7 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 disabled={requires2FA}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
+                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 placeholder-gray-400 focus:border-transparent focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
                 placeholder="clinician@iljar.is"
               />
             </div>
@@ -98,7 +97,7 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 disabled={requires2FA}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
+                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 placeholder-gray-400 focus:border-transparent focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
                 placeholder="password123"
               />
             </div>
@@ -115,7 +114,7 @@ export default function LoginPage() {
                   onChange={(e) => setTotpToken(e.target.value)}
                   required
                   maxLength={6}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 placeholder-gray-400 focus:border-transparent focus:ring-2 focus:ring-blue-500"
                   placeholder="123456"
                 />
               </div>

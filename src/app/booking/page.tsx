@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/Card';
+import { authFetch } from '@/lib/api/client';
 
 interface Client {
   id: string;
@@ -31,7 +32,7 @@ export default function BookingPage() {
   useEffect(() => {
     async function fetchClients() {
       try {
-        const res = await fetch('/api/clients');
+        const res = await authFetch('/api/clients');
         const data = await res.json();
         setClients(data.clients);
       } catch (error) {
@@ -47,7 +48,7 @@ export default function BookingPage() {
       async function fetchSlots() {
         setLoading(true);
         try {
-          const res = await fetch(`/api/slots?date=${selectedDate}`);
+          const res = await authFetch(`/api/slots?date=${selectedDate}`);
           const data = await res.json();
           setSlots(data.slots);
         } catch (error) {
@@ -83,7 +84,7 @@ export default function BookingPage() {
 
     setLoading(true);
     try {
-      const res = await fetch('/api/appointments', {
+      const res = await authFetch('/api/appointments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -188,7 +189,7 @@ export default function BookingPage() {
                 min={today}
                 value={selectedDate}
                 onChange={handleDateChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-transparent focus:ring-2 focus:ring-blue-500"
               />
               {selectedDate && (
                 <p className="mt-2 text-sm text-gray-600">
@@ -245,7 +246,7 @@ export default function BookingPage() {
                 placeholder="Leita að nafni eða símanúmeri..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-4 py-2 mb-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="mb-4 w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 placeholder-gray-400 focus:border-transparent focus:ring-2 focus:ring-blue-500"
               />
               <div className="max-h-64 overflow-y-auto space-y-2">
                 {filteredClients.map((client) => (

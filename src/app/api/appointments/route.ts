@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
+import { requireAuth } from '@/lib/auth/guard';
 
 // Get all appointments or create new
 export async function GET(request: NextRequest) {
   try {
+    const auth = requireAuth(request);
+    if (!auth.ok) {
+      return auth.response;
+    }
+
     const searchParams = request.nextUrl.searchParams;
     const next = searchParams.get('next') === 'true';
     const clientId = searchParams.get('clientId');
@@ -49,6 +55,11 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = requireAuth(request);
+    if (!auth.ok) {
+      return auth.response;
+    }
+
     const body = await request.json();
     const { clientId, startTime, endTime, type, note } = body;
 

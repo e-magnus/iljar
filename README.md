@@ -9,6 +9,10 @@ Podiatry clinic management system - MVP for solo practitioners.
 - **Secure image storage** - SOAP notes with photo documentation
 - **Offline support** - Read-only access to recent visits
 
+## Project Execution & Tracking
+
+- Implementation plan and progress tracker: [PROJECT_EXECUTION_PLAN.md](PROJECT_EXECUTION_PLAN.md)
+
 ## Tech Stack
 
 - **Framework**: Next.js 15 with TypeScript
@@ -51,6 +55,12 @@ Run Prisma migrations to create the database schema:
 npx prisma migrate dev --name init
 ```
 
+Quick start for local DB (starts/creates `iljar-postgres` Docker container + applies migrations):
+
+```bash
+npm run db:up
+```
+
 Generate Prisma Client:
 
 ```bash
@@ -75,16 +85,24 @@ This creates a test user with credentials:
 npm run dev
 ```
 
+`npm run dev` now does local bootstrap automatically:
+- starts local Postgres + runs migrations (`npm run db:up`)
+- checks if seed data exists
+- runs `npm run seed` only when data is missing
+- starts Next.js dev server
+
 Open [http://localhost:3000/login](http://localhost:3000/login) in your browser and log in with the test credentials above.
 
 ## Available Scripts
 
 - `npm run dev` - Start development server
+- `npm run dev:app` - Start Next.js dev server only (no DB/seed bootstrap)
 - `npm run build` - Build for production
 - `npm run start` - Start production server
 - `npm run lint` - Run ESLint
-- `npm test` - Run tests
+- `npm run test:auth` - Run auth/route-protection smoke tests
 - `npm run seed` - Seed database with test data
+- `npm run db:up` - Start local Postgres container and apply migrations
 - `npx prisma studio` - Open Prisma Studio (database GUI)
 
 ## Project Structure

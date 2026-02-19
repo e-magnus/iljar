@@ -3,11 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "npm run db:up && tsx scripts/ensure-seed.ts && npm run dev:app",
+    "dev:app": "next dev",
+    "dev:reset": "bash scripts/dev-reset.sh",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:auth": "tsx --test tests/auth-route-protection.test.ts",
     "seed": "tsx prisma/seed.ts",
+    "db:up": "bash scripts/db-up.sh",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "perf:test": "tsx scripts/performance-test.ts"
