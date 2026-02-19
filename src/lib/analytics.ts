@@ -1,0 +1,34 @@
+export type LandingEvent =
+  | 'view_landing'
+  | 'click_primary_cta'
+  | 'click_login'
+  | 'submit_lead_form'
+  | 'scroll_75_percent';
+
+export function trackEvent(event: LandingEvent, metadata?: Record<string, string>) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const payload = {
+    event,
+    metadata,
+    timestamp: new Date().toISOString(),
+  };
+
+  const body = JSON.stringify(payload);
+
+  if (navigator.sendBeacon) {
+    const blob = new Blob([body], { type: 'application/json' });
+    navigator.sendBeacon('/api/analytics', blob);
+    return;
+  }
+
+  fetch('/api/analytics', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+    keepalive: true,
+  }).catch(() => {
+  });
+}

@@ -37,7 +37,7 @@ export default function LoginPage() {
         setSessionTokens(data.accessToken, data.refreshToken);
         
         // Redirect to dashboard
-        router.push('/');
+        router.push('/dashboard');
       } else {
         if (data.requires2FA) {
           setRequires2FA(true);

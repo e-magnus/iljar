@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "iljar - Podiatry Clinic Management",
-  description: "Fast and secure clinic management for podiatrists",
+  title: "iljar",
+  description: "Rekstrarkerfi fyrir íslenskar fótaaðgerðarstofur",
 };
 
 export default function RootLayout({
