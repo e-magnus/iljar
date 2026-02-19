@@ -36,6 +36,14 @@ async function main() {
   });
   console.log('✓ Created settings');
 
+  await prisma.photo.deleteMany();
+  await prisma.visit.deleteMany();
+  await prisma.appointment.deleteMany();
+  await prisma.client.deleteMany();
+  await prisma.availabilityRule.deleteMany();
+  await prisma.auditLog.deleteMany();
+  console.log('✓ Cleared previous demo data');
+
   // Create availability rules (Monday-Friday, 9:00-17:00)
   const weekdays = [1, 2, 3, 4, 5]; // Monday-Friday
   for (const weekday of weekdays) {
@@ -111,8 +119,8 @@ async function main() {
         startTime,
         endTime,
         status,
-        type: i % 3 === 0 ? 'First Visit' : 'Follow-up',
-        note: i % 5 === 0 ? 'Patient requested early appointment' : null,
+        type: i % 3 === 0 ? 'Fyrsta viðtal' : 'Eftirfylgd',
+        note: i % 5 === 0 ? 'Sjúklingur óskaði eftir snemmtíma.' : null,
       },
     });
     appointments.push(appointment);
@@ -125,10 +133,10 @@ async function main() {
     await prisma.visit.create({
       data: {
         appointmentId: appointment.id,
-        soapS: 'Patient reports pain in left foot, especially after walking.',
-        soapO: 'Mild swelling observed. Range of motion normal. No visible deformities.',
-        soapA: 'Likely plantar fasciitis. No signs of infection.',
-        soapP: 'Prescribed stretching exercises. Follow-up in 2 weeks. Consider orthotics if no improvement.',
+        soapS: 'Sjúklingur lýsir verk í vinstri fæti, sérstaklega eftir göngu.',
+        soapO: 'Væg bólga sést. Hreyfiferill eðlilegur. Engar sjáanlegar aflagnanir.',
+        soapA: 'Líkleg plantarfasciitis. Engin merki um sýkingu.',
+        soapP: 'Mælt með teygjuæfingum. Eftirfylgd eftir 2 vikur. Meta innlegg ef einkenni lagast ekki.',
       },
     });
   }

@@ -3,7 +3,13 @@ export type LandingEvent =
   | 'click_primary_cta'
   | 'click_login'
   | 'submit_lead_form'
-  | 'scroll_75_percent';
+  | 'scroll_75_percent'
+  | 'view_dashboard'
+  | 'click_new_booking'
+  | 'mark_arrived'
+  | 'mark_completed'
+  | 'open_reschedule'
+  | 'complete_setup_step';
 
 export function trackEvent(event: LandingEvent, metadata?: Record<string, string>) {
   if (typeof window === 'undefined') {

@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const next = searchParams.get('next') === 'true';
     const clientId = searchParams.get('clientId');
+    const dateParam = searchParams.get('date');
 
     if (next) {
       // Get next upcoming appointment
@@ -30,9 +31,37 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ appointment });
     }
 
-    const where: { clientId?: string } = {};
+    const where: {
+      clientId?: string;
+      startTime?: {
+        gte: Date;
+        lte: Date;
+      };
+    } = {};
+
     if (clientId) {
       where.clientId = clientId;
+    }
+
+    if (dateParam) {
+      const date = new Date(`${dateParam}T00:00:00`);
+      if (isNaN(date.getTime())) {
+        return NextResponse.json(
+          { error: 'Invalid date format. Use YYYY-MM-DD.' },
+          { status: 400 }
+        );
+      }
+
+      const dayStart = new Date(date);
+      dayStart.setHours(0, 0, 0, 0);
+
+      const dayEnd = new Date(date);
+      dayEnd.setHours(23, 59, 59, 999);
+
+      where.startTime = {
+        gte: dayStart,
+        lte: dayEnd,
+      };
     }
 
     const appointments = await prisma.appointment.findMany({
@@ -40,7 +69,7 @@ export async function GET(request: NextRequest) {
       include: {
         client: true,
       },
-      orderBy: { startTime: 'desc' },
+      orderBy: { startTime: dateParam ? 'asc' : 'desc' },
     });
 
     return NextResponse.json({ appointments });
