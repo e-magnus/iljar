@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { DashboardAppointment } from '@/components/dashboard/types';
+import { DashboardAppointment, DashboardClinicalFlag } from '@/components/dashboard/types';
 import { authFetch } from '@/lib/api/client';
 
 interface AvailableSlot {
@@ -16,6 +16,15 @@ interface TodayTimelineProps {
   onPreviousDay: () => void;
   onNextDay: () => void;
 }
+
+const clinicalFlagMeta: Record<DashboardClinicalFlag, { label: string; icon: string }> = {
+  ANTICOAGULANT: { label: 'Blóðþynning', icon: '🩸' },
+  DIABETES: { label: 'Sykursýki', icon: '🧪' },
+  ALLERGY: { label: 'Ofnæmi', icon: '⚠️' },
+  NEUROPATHY: { label: 'Taugakvilli', icon: '🦶' },
+  PACEMAKER: { label: 'Gangráður', icon: '❤️' },
+  OTHER: { label: 'Annað', icon: 'ℹ️' },
+};
 
 function formatTime(dateString: string): string {
   return new Intl.DateTimeFormat('is-IS', {
@@ -95,25 +104,46 @@ export function TodayTimeline({ selectedDate, appointments, onPreviousDay, onNex
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-semibold text-gray-900">{appointment.client.name}</p>
+                        {appointment.client.clinicalFlags && appointment.client.clinicalFlags.length > 0 ? (
+                          <div className="mt-1 flex flex-wrap items-center gap-1">
+                            {appointment.client.clinicalFlags.slice(0, 4).map((flag) => (
+                              <span
+                                key={`${appointment.id}-${flag}`}
+                                title={clinicalFlagMeta[flag].label}
+                                aria-label={clinicalFlagMeta[flag].label}
+                                className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-gray-300 bg-gray-50 text-[10px]"
+                              >
+                                {clinicalFlagMeta[flag].icon}
+                              </span>
+                            ))}
+                            {appointment.client.clinicalFlags.length > 4 ? (
+                              <span
+                                className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-gray-300 bg-white px-1 text-[10px] text-gray-600"
+                                title={`Aðrir áhættuþættir: ${appointment.client.clinicalFlags.length - 4}`}
+                              >
+                                +{appointment.client.clinicalFlags.length - 4}
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : null}
                         <p className="text-sm text-gray-600">Tegund komu: {appointment.type ?? 'Almenn meðferð'}</p>
                         <p className="text-xs text-gray-600">Sími: {appointment.client.phone}</p>
                         {appointment.client.contactPhone ? (
                           <p className="text-xs text-gray-600">Tengiliður: {appointment.client.contactPhone}</p>
                         ) : null}
-                        <p className="text-xs text-gray-600">Staða: {appointment.status}</p>
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-2">
                         <p className="text-lg font-semibold text-gray-900">{formatTime(appointment.startTime)}</p>
                         <Link href={`/clients/${appointment.client.id}`}>
                           <Button
                             size="sm"
-                            className="bg-green-600 text-white hover:bg-green-700 focus:ring-green-500"
+                            className="w-24 justify-center bg-green-600 text-white hover:bg-green-700 focus:ring-green-500"
                           >
                             Opna
                           </Button>
                         </Link>
                         <Link href={`/appointments/${appointment.id}`}>
-                          <Button size="sm" variant="outline">Breyta tíma</Button>
+                          <Button size="sm" variant="outline" className="w-24 justify-center">Breyta</Button>
                         </Link>
                       </div>
                     </div>

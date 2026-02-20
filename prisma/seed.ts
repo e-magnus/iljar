@@ -76,11 +76,25 @@ async function main() {
 
   const clients = [];
   for (let i = 0; i < clientNames.length; i++) {
+    const clinicalFlags =
+      i === 0
+        ? ['DIABETES']
+        : i === 1
+          ? ['ANTICOAGULANT']
+          : i === 2
+            ? ['ALLERGY']
+            : i === 3
+              ? ['DIABETES', 'ANTICOAGULANT']
+              : i === 4
+                ? ['NEUROPATHY']
+                : [];
+
     const client = await prisma.client.create({
       data: {
         name: clientNames[i],
         phone: `5${String(i).padStart(6, '0')}`,
         kennitala: `${String(i + 1).padStart(2, '0')}0101-${String(2000 + i).padStart(4, '0')}`,
+        clinicalFlags,
       },
     });
     clients.push(client);

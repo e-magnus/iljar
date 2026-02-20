@@ -1,8 +1,17 @@
+export type DashboardClinicalFlag =
+  | 'ANTICOAGULANT'
+  | 'DIABETES'
+  | 'ALLERGY'
+  | 'NEUROPATHY'
+  | 'PACEMAKER'
+  | 'OTHER';
+
 export interface DashboardClient {
   id: string;
   name: string;
   phone: string;
   contactPhone?: string | null;
+  clinicalFlags?: DashboardClinicalFlag[];
 }
 
 export interface DashboardAppointment {

@@ -28,7 +28,17 @@ export async function GET(request: NextRequest) {
         },
       });
 
-      return NextResponse.json({ appointment });
+      const appointmentWithFlags = appointment
+        ? {
+            ...appointment,
+            client: {
+              ...appointment.client,
+              clinicalFlags: (appointment.client as { clinicalFlags?: string[] }).clinicalFlags ?? [],
+            },
+          }
+        : null;
+
+      return NextResponse.json({ appointment: appointmentWithFlags });
     }
 
     const where: {
@@ -72,7 +82,15 @@ export async function GET(request: NextRequest) {
       orderBy: { startTime: dateParam ? 'asc' : 'desc' },
     });
 
-    return NextResponse.json({ appointments });
+    const appointmentsWithFlags = appointments.map((appointment) => ({
+      ...appointment,
+      client: {
+        ...appointment.client,
+        clinicalFlags: (appointment.client as { clinicalFlags?: string[] }).clinicalFlags ?? [],
+      },
+    }));
+
+    return NextResponse.json({ appointments: appointmentsWithFlags });
   } catch (error) {
     console.error('Get appointments error:', error);
     return NextResponse.json(
