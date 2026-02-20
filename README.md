@@ -93,6 +93,41 @@ npm run dev
 
 Open [http://localhost:3000/login](http://localhost:3000/login) in your browser and log in with the test credentials above.
 
+## Troubleshooting
+
+### Photo upload blocked (CSP or CORS)
+
+If image upload fails with browser errors like `blocked by CORS policy` or `violates Content Security Policy`, check the following:
+
+1. Ensure `.env` uses real S3 credentials (not placeholders):
+
+```env
+S3_ENDPOINT="https://s3.amazonaws.com"
+S3_BUCKET="iljar-photos"
+S3_ACCESS_KEY_ID="<real-access-key-id>"
+S3_SECRET_ACCESS_KEY="<real-secret-access-key>"
+S3_REGION="us-east-1"
+```
+
+2. Configure S3 bucket CORS to allow your app origin(s):
+
+```json
+[
+	{
+		"AllowedHeaders": ["*"],
+		"AllowedMethods": ["GET", "PUT", "HEAD"],
+		"AllowedOrigins": [
+			"http://localhost:3000",
+			"https://*.app.github.dev"
+		],
+		"ExposeHeaders": ["ETag"],
+		"MaxAgeSeconds": 3000
+	}
+]
+```
+
+3. Restart dev server after config changes and retry upload.
+
 ## Available Scripts
 
 - `npm run dev` - Start development server
@@ -192,7 +227,7 @@ cd scripts
 - [x] Appointment details with visit history (last 3 visits)
 - [x] Mark patient as arrived
 - [x] SOAP note entry with templates
-- [x] Photo upload with consent tracking
+- [x] Photo upload with consent metadata tracking
 - [x] 4-tap booking flow UI
 - [x] Visit recording UI with photo upload
 
@@ -231,7 +266,7 @@ cd scripts
 - ✅ Visit history (last 3 visits shown on appointment detail)
 - ✅ Pre-defined templates for common conditions
 - ✅ Photo documentation (Before/After)
-- ✅ Consent tracking with timestamp
+- ✅ Consent metadata tracking with timestamp (recorded at upload)
 
 ### Photo Management
 - ✅ S3-compatible storage integration

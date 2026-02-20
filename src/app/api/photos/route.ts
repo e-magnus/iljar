@@ -72,6 +72,14 @@ export async function POST(request: NextRequest) {
     }, { status: 201 });
   } catch (error) {
     console.error('Photo upload URL generation error:', error);
+
+    if (error instanceof Error && error.message.startsWith('S3 configuration error:')) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

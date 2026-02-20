@@ -7,15 +7,15 @@ const scriptSrc = isDev
   : "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com";
 
 const connectSrc = isDev
-  ? "connect-src 'self' ws: wss: https://challenges.cloudflare.com"
-  : "connect-src 'self' https://challenges.cloudflare.com";
+  ? "connect-src 'self' ws: wss: https://challenges.cloudflare.com https://s3.amazonaws.com https://*.s3.amazonaws.com https://*.amazonaws.com"
+  : "connect-src 'self' https://challenges.cloudflare.com https://s3.amazonaws.com https://*.s3.amazonaws.com https://*.amazonaws.com";
 
 const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
   "frame-ancestors 'none'",
   "object-src 'none'",
-  "img-src 'self' data: blob:",
+  "img-src 'self' data: blob: https://s3.amazonaws.com https://*.s3.amazonaws.com https://*.amazonaws.com",
   "font-src 'self' data:",
   "style-src 'self' 'unsafe-inline'",
   scriptSrc,

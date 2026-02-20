@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Button } from '@/components/ui/Button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Card, CardContent } from '@/components/ui/Card';
 import { authFetch } from '@/lib/api/client';
 
 interface Appointment {
@@ -16,118 +17,112 @@ interface Appointment {
   note?: string | null;
 }
 
-interface Client {
+interface AppointmentVisitPhoto {
   id: string;
-  name: string;
-  phone: string;
-  kennitala?: string | null;
+  type: 'BEFORE' | 'AFTER';
+  downloadUrl?: string;
 }
 
-interface Visit {
+interface AppointmentVisit {
   id: string;
   soapS: string | null;
   soapO: string | null;
   soapA: string | null;
   soapP: string | null;
-  createdAt: string;
-  photos?: Array<{ id: string }>;
+  photos?: AppointmentVisitPhoto[];
 }
 
-interface AppointmentDetail {
+interface AppointmentWithDetails {
   id: string;
-  startTime: string;
-  endTime: string;
-  status: string;
-  type: string | null;
-  note: string | null;
-  visits: Visit[];
+  visits: AppointmentVisit[];
 }
 
-function formatDate(dateString: string) {
-  return new Intl.DateTimeFormat('is-IS', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date(dateString));
+interface Client {
+  id: string;
+  name: string;
+  phone: string;
+  kennitala?: string | null;
+  clinicalFlags?: ClinicalFlag[];
+  contactNote?: string | null;
+}
+
+type ClinicalFlag = 'ANTICOAGULANT' | 'DIABETES' | 'ALLERGY' | 'NEUROPATHY' | 'PACEMAKER' | 'OTHER';
+
+const clinicalFlagOptions: Array<{ value: Exclude<ClinicalFlag, 'PACEMAKER'>; label: string; icon: string }> = [
+  { value: 'ANTICOAGULANT', label: 'Blóðþynning', icon: '🩸' },
+  { value: 'DIABETES', label: 'Sykursýki', icon: '🧪' },
+  { value: 'ALLERGY', label: 'Ofnæmi', icon: '⚠️' },
+  { value: 'NEUROPATHY', label: 'Taugakvilli', icon: '🦶' },
+  { value: 'OTHER', label: 'Annað', icon: 'ℹ️' },
+];
+
+const clinicalFlagMetaByValue = clinicalFlagOptions.reduce<Record<ClinicalFlag, { label: string; icon: string }>>((accumulator, option) => {
+  accumulator[option.value] = { label: option.label, icon: option.icon };
+  return accumulator;
+}, {
+  ANTICOAGULANT: { label: 'Blóðþynning', icon: '🩸' },
+  DIABETES: { label: 'Sykursýki', icon: '🧪' },
+  ALLERGY: { label: 'Ofnæmi', icon: '⚠️' },
+  NEUROPATHY: { label: 'Taugakvilli', icon: '🦶' },
+  PACEMAKER: { label: 'Gangráður', icon: '❤️' },
+  OTHER: { label: 'Annað', icon: 'ℹ️' },
+});
+
+interface TreatmentPhoto {
+  file: File;
+  type: 'BEFORE' | 'AFTER';
+  preview: string;
 }
 
 function formatDateTime(dateString: string) {
-  return new Intl.DateTimeFormat('is-IS', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(dateString));
+  const date = new Date(dateString);
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = String(date.getFullYear()).slice(-2);
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+
+  return `${day}.${month}.${year} kl. ${hours}:${minutes}`;
 }
 
 function formatPhone(phone: string) {
   return phone.replace(/\s+/g, '');
 }
 
-function maskedKennitala(value?: string | null) {
-  if (!value) return '—';
-  const plain = value.replace(/[^0-9]/g, '');
-  if (plain.length < 4) return value;
-  return `****${plain.slice(-4)}`;
-}
+function formatWeeksAndDays(totalDays: number) {
+  const weeks = Math.floor(totalDays / 7);
+  const days = totalDays % 7;
 
-function avgIntervalDays(dates: Date[]) {
-  if (dates.length < 2) {
-    return null;
+  const weekLabel = weeks === 1 ? 'vika' : 'vikur';
+  const dayLabel = days === 1 ? 'dagur' : 'dagar';
+
+  if (weeks === 0) {
+    return `${days} ${dayLabel}`;
   }
 
-  const sorted = [...dates].sort((a, b) => a.getTime() - b.getTime());
-  let total = 0;
-  for (let i = 1; i < sorted.length; i++) {
-    total += (sorted[i].getTime() - sorted[i - 1].getTime()) / (1000 * 60 * 60 * 24);
-  }
-  return Math.round(total / (sorted.length - 1));
-}
-
-function extractMedicalSignals(detail: AppointmentDetail | null, appointments: Appointment[]) {
-  const textBlob = [
-    detail?.note,
-    detail?.visits?.[0]?.soapS,
-    detail?.visits?.[0]?.soapO,
-    detail?.visits?.[0]?.soapA,
-    detail?.visits?.[0]?.soapP,
-    ...appointments.map((appointment) => appointment.note),
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-
-  const allergies: string[] = [];
-  const conditions: string[] = [];
-  const medications: string[] = [];
-
-  if (textBlob.includes('ofnæmi') || textBlob.includes('latex')) {
-    allergies.push(textBlob.includes('latex') ? 'Latex' : 'Ótilgreint ofnæmi');
-  }
-
-  if (textBlob.includes('diabetes') || textBlob.includes('sykursýki')) {
-    conditions.push('Diabetes');
-  }
-  if (textBlob.includes('hjarta')) {
-    conditions.push('Hjartasjúkdómur');
-  }
-  if (textBlob.includes('taug')) {
-    conditions.push('Taugatengd einkenni');
-  }
-
-  if (textBlob.includes('blóðþynn') || textBlob.includes('warfarin') || textBlob.includes('eliquis')) {
-    medications.push('Blóðþynnandi lyf');
-  }
-
-  return { allergies, conditions, medications };
+  return `${weeks} ${weekLabel} og ${days} ${dayLabel}`;
 }
 
 export default function ClientDetailPage() {
   const params = useParams<{ id: string }>();
   const [client, setClient] = useState<Client | null>(null);
+  const [selectedFlags, setSelectedFlags] = useState<ClinicalFlag[]>([]);
+  const [savingFlags, setSavingFlags] = useState(false);
+  const [flagsSavedMessage, setFlagsSavedMessage] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'treatment' | 'history' | 'notes'>('treatment');
+  const [soapS, setSoapS] = useState('');
+  const [soapO, setSoapO] = useState('');
+  const [soapA, setSoapA] = useState('');
+  const [soapP, setSoapP] = useState('');
+  const [treatmentPhotos, setTreatmentPhotos] = useState<TreatmentPhoto[]>([]);
+  const [savingTreatment, setSavingTreatment] = useState(false);
+  const [treatmentMessage, setTreatmentMessage] = useState<string | null>(null);
+  const [memoText, setMemoText] = useState('');
+  const [savingMemo, setSavingMemo] = useState(false);
+  const [memoMessage, setMemoMessage] = useState<string | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [latestDetail, setLatestDetail] = useState<AppointmentDetail | null>(null);
+  const [appointmentDetailsById, setAppointmentDetailsById] = useState<Record<string, AppointmentWithDetails>>({});
+  const [showOlderVisits, setShowOlderVisits] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
@@ -154,18 +149,12 @@ export default function ClientDetailPage() {
         const appointmentsData = await appointmentsRes.json();
 
         const appointmentItems: Appointment[] = appointmentsData.appointments ?? [];
-        const latestCompleted = appointmentItems.find((appointment) => appointment.status === 'COMPLETED') ?? appointmentItems[0];
 
-        setClient(clientData.client ?? null);
+        const fetchedClient = clientData.client ?? null;
+        setClient(fetchedClient);
+        setSelectedFlags(((fetchedClient?.clinicalFlags ?? []) as ClinicalFlag[]).filter((flag) => flag !== 'PACEMAKER'));
+        setMemoText(fetchedClient?.contactNote ?? '');
         setAppointments(appointmentItems);
-
-        if (latestCompleted?.id) {
-          const detailRes = await authFetch(`/api/appointments/${latestCompleted.id}`);
-          if (detailRes.ok) {
-            const detailData = await detailRes.json();
-            setLatestDetail(detailData.appointment ?? null);
-          }
-        }
       } catch (error) {
         console.error('Error fetching client history:', error);
       } finally {
@@ -178,34 +167,255 @@ export default function ClientDetailPage() {
     }
   }, [params.id]);
 
+  useEffect(() => {
+    if (activeTab !== 'history') {
+      return;
+    }
+
+    const latestIds = appointments.slice(0, 3).map((appointment) => appointment.id);
+    if (latestIds.length === 0) {
+      setAppointmentDetailsById({});
+      return;
+    }
+
+    let mounted = true;
+
+    async function fetchLatestDetails() {
+      try {
+        const responses = await Promise.all(latestIds.map((id) => authFetch(`/api/appointments/${id}`)));
+
+        const details: Record<string, AppointmentWithDetails> = {};
+
+        for (let index = 0; index < responses.length; index += 1) {
+          const response = responses[index];
+          if (!response.ok) {
+            continue;
+          }
+
+          const data = await response.json();
+          if (data?.appointment) {
+            details[latestIds[index]] = data.appointment as AppointmentWithDetails;
+          }
+        }
+
+        if (mounted) {
+          setAppointmentDetailsById(details);
+        }
+      } catch (error) {
+        console.error('Error fetching appointment details:', error);
+      }
+    }
+
+    fetchLatestDetails();
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeTab, appointments]);
+
+  const toggleFlag = (flag: ClinicalFlag) => {
+    setSelectedFlags((previousFlags) =>
+      previousFlags.includes(flag)
+        ? previousFlags.filter((currentFlag) => currentFlag !== flag)
+        : [...previousFlags, flag]
+    );
+    setFlagsSavedMessage(null);
+  };
+
+  const saveClinicalFlags = async () => {
+    if (!client) {
+      return;
+    }
+
+    setSavingFlags(true);
+    setFlagsSavedMessage(null);
+
+    try {
+      const response = await authFetch(`/api/clients/${client.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clinicalFlags: selectedFlags }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update clinical flags');
+      }
+
+      const data = await response.json();
+      setClient(data.client ?? client);
+      setSelectedFlags(((data.client?.clinicalFlags ?? selectedFlags) as ClinicalFlag[]).filter((flag) => flag !== 'PACEMAKER'));
+      setFlagsSavedMessage('Vistað.');
+    } catch (error) {
+      console.error('Error updating clinical flags:', error);
+      setFlagsSavedMessage('Ekki tókst að vista.');
+    } finally {
+      setSavingFlags(false);
+    }
+  };
+
+  const saveTreatment = async () => {
+    if (!nextAppointment?.id) {
+      setTreatmentMessage('Enginn bókaður tími til að skrá meðferð á.');
+      return;
+    }
+
+    setSavingTreatment(true);
+    setTreatmentMessage(null);
+
+    try {
+      const response = await authFetch('/api/visits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          appointmentId: nextAppointment.id,
+          soapS,
+          soapO,
+          soapA,
+          soapP,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save treatment');
+      }
+
+      const data = await response.json();
+      const visitId = data?.visit?.id as string | undefined;
+
+      if (visitId && treatmentPhotos.length > 0) {
+        for (const photo of treatmentPhotos) {
+          const urlResponse = await authFetch('/api/photos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              visitId,
+              filename: photo.file.name,
+              contentType: photo.file.type,
+              photoType: photo.type,
+            }),
+          });
+
+          if (!urlResponse.ok) {
+            const payload = await urlResponse.json().catch(() => null);
+            const details = typeof payload?.error === 'string' ? payload.error : 'Failed to prepare photo upload';
+            throw new Error(details);
+          }
+
+          const { uploadUrl } = await urlResponse.json();
+          const uploadResponse = await fetch(uploadUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': photo.file.type },
+            body: photo.file,
+          });
+
+          if (!uploadResponse.ok) {
+            throw new Error('Failed to upload photo');
+          }
+        }
+      }
+
+      setSoapS('');
+      setSoapO('');
+      setSoapA('');
+      setSoapP('');
+      treatmentPhotos.forEach((photo) => URL.revokeObjectURL(photo.preview));
+      setTreatmentPhotos([]);
+      setTreatmentMessage('Meðferð skráð.');
+    } catch (error) {
+      console.error('Error saving treatment:', error);
+      const message = error instanceof Error ? error.message : '';
+      if (message.includes('CORS') || message.includes('Failed to fetch')) {
+        setTreatmentMessage('Myndaupphleðsla var stöðvuð (CORS). Athugaðu S3 CORS stillingar fyrir þetta origin.');
+      } else if (message.startsWith('S3 configuration error:')) {
+        setTreatmentMessage(message);
+      } else {
+        setTreatmentMessage('Ekki tókst að vista meðferð.');
+      }
+    } finally {
+      setSavingTreatment(false);
+    }
+  };
+
+  const saveMemo = async () => {
+    if (!client) {
+      return;
+    }
+
+    setSavingMemo(true);
+    setMemoMessage(null);
+
+    try {
+      const response = await authFetch(`/api/clients/${client.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contactNote: memoText }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save memo');
+      }
+
+      const data = await response.json();
+      setClient(data.client ?? client);
+      setMemoMessage('Minnispunktur vistaður.');
+    } catch (error) {
+      console.error('Error saving memo:', error);
+      setMemoMessage('Ekki tókst að vista minnispunkt.');
+    } finally {
+      setSavingMemo(false);
+    }
+  };
+
+  const handleTreatmentPhotoAdd = (event: React.ChangeEvent<HTMLInputElement>, type: 'BEFORE' | 'AFTER') => {
+    const files = event.target.files;
+    if (!files || files.length === 0) {
+      return;
+    }
+
+    const newPhotos: TreatmentPhoto[] = [];
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index];
+      newPhotos.push({
+        file,
+        type,
+        preview: URL.createObjectURL(file),
+      });
+    }
+
+    setTreatmentPhotos((previousPhotos) => [...previousPhotos, ...newPhotos]);
+    event.target.value = '';
+    setTreatmentMessage(null);
+  };
+
+  const removeTreatmentPhoto = (indexToRemove: number) => {
+    setTreatmentPhotos((previousPhotos) => {
+      const photo = previousPhotos[indexToRemove];
+      if (photo) {
+        URL.revokeObjectURL(photo.preview);
+      }
+      return previousPhotos.filter((_, index) => index !== indexToRemove);
+    });
+    setTreatmentMessage(null);
+  };
+
   const now = new Date();
   const nextAppointment = appointments
     .filter((appointment) => new Date(appointment.startTime).getTime() >= now.getTime())
     .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())[0];
 
-  const sixMonthsAgo = new Date();
-  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+  const visitDates = appointments
+    .map((appointment) => new Date(appointment.startTime))
+    .sort((a, b) => b.getTime() - a.getTime());
 
-  const appointmentDates = appointments.map((appointment) => new Date(appointment.startTime));
-  const visitsLastSixMonths = appointmentDates.filter((date) => date >= sixMonthsAgo).length;
-  const averageInterval = avgIntervalDays(appointmentDates);
-  const lastVisitDate = appointments[0]?.startTime;
+  const latestVisitDate = visitDates.length > 0 ? visitDates[0] : null;
+  const previousVisitDate = visitDates.length > 1 ? visitDates[1] : null;
 
-  const medical = extractMedicalSignals(latestDetail, appointments);
-  const hasFollowUpAlert = Boolean(
-    latestDetail?.visits?.[0]?.soapP?.toLowerCase().includes('eftirfylgd') ||
-      latestDetail?.note?.toLowerCase().includes('eftirfylgd')
-  );
+  const daysSinceLastVisit = latestVisitDate && previousVisitDate
+    ? Math.floor((latestVisitDate.getTime() - previousVisitDate.getTime()) / (1000 * 60 * 60 * 24))
+    : null;
 
-  const alerts = [
-    ...medical.allergies.map((item) => `Ofnæmi skráð: ${item}.`),
-    ...(medical.conditions.includes('Diabetes') ? ['Diabetes skráð — fylgjast með gróanda og þrýstingi.'] : []),
-    ...(medical.medications.includes('Blóðþynnandi lyf') ? ['Blóðþynnandi lyf — gæta sérstaklega að blæðingarhættu.'] : []),
-    ...(hasFollowUpAlert ? ['Síðasta meðferð gaf til kynna þörf á eftirfylgd.'] : []),
-  ].slice(0, 3);
-
-  const primaryVisit = latestDetail?.visits?.[0] ?? null;
-  const photoCount = latestDetail?.visits?.reduce((count, visit) => count + (visit.photos?.length ?? 0), 0) ?? 0;
+  const latestThreeAppointments = appointments.slice(0, 3);
+  const olderAppointments = appointments.slice(3);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -213,50 +423,59 @@ export default function ClientDetailPage() {
         <div className="mx-auto max-w-4xl px-4 py-3">
           <h1 className="text-lg font-bold text-gray-900">Skjólstæðingayfirlit</h1>
           {client && (
-            <div className="mt-1 space-y-1">
+            <div className="mt-1 space-y-2">
               <p className="text-sm font-medium text-gray-900">{client.name}</p>
               <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
-                <a href={`tel:${formatPhone(client.phone)}`} className="font-medium text-blue-700">{client.phone}</a>
+                <span>KT: {client.kennitala ?? '—'}</span>
                 <span>•</span>
-                <span>ID: {maskedKennitala(client.kennitala)}</span>
-                <span>•</span>
-                <span>
-                  Næsti tími: {nextAppointment ? formatDateTime(nextAppointment.startTime) : 'Enginn bókaður'}
-                </span>
+                <a href={`tel:${formatPhone(client.phone)}`} className="font-medium text-blue-700">Sími: {client.phone}</a>
               </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {selectedFlags.length > 0 ? (
+                  selectedFlags.map((flag) => (
+                    <span key={flag} className="rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700">
+                      {clinicalFlagMetaByValue[flag].icon} {clinicalFlagMetaByValue[flag].label}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-xs text-gray-500">Engin flögg valin.</span>
+                )}
+              </div>
+
+              <details className="rounded-lg border border-gray-200 bg-white p-2">
+                <summary className="cursor-pointer text-xs font-medium text-gray-700">Velja flögg</summary>
+                <div className="mt-2 space-y-2">
+                  {clinicalFlagOptions.map((option) => {
+                    const isSelected = selectedFlags.includes(option.value);
+
+                    return (
+                      <label key={option.value} className="flex items-center gap-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleFlag(option.value)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <span>{option.icon} {option.label}</span>
+                      </label>
+                    );
+                  })}
+                  <div className="pt-1">
+                    <Button size="sm" onClick={saveClinicalFlags} disabled={savingFlags}>
+                      {savingFlags ? 'Vistar...' : 'Vista flögg'}
+                    </Button>
+                    {flagsSavedMessage && <p className="mt-1 text-xs text-gray-600">{flagsSavedMessage}</p>}
+                  </div>
+                </div>
+              </details>
             </div>
           )}
 
-          <div className="mt-2 flex flex-wrap gap-2">
-            {medical.allergies.length > 0 && (
-              <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">OFNÆMI</span>
-            )}
-            {medical.conditions.includes('Diabetes') && (
-              <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800">DIABETES</span>
-            )}
-            {medical.medications.includes('Blóðþynnandi lyf') && (
-              <span className="rounded-full bg-violet-100 px-2 py-1 text-xs font-semibold text-violet-800">BLÓÐÞYNNANDI</span>
-            )}
-            {(primaryVisit?.soapP || latestDetail?.note) && (
-              <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700">ATHUGASEMD</span>
-            )}
-          </div>
-
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            <Link href={nextAppointment ? `/visits/new?appointmentId=${nextAppointment.id}` : '/visits/new'}>
-              <Button size="sm" className="h-11 w-full">Ný meðferð</Button>
-            </Link>
-            <a href="#notes-card">
-              <Button size="sm" variant="outline" className="h-11 w-full">Athugasemd</Button>
-            </a>
-            <a href="#history-card">
-              <Button size="sm" variant="outline" className="h-11 w-full">Full saga</Button>
-            </a>
-          </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl space-y-4 px-4 py-4">
+      <main className="mx-auto max-w-4xl space-y-3 px-4 py-3">
         {loading ? (
           <Card>
             <CardContent>
@@ -272,198 +491,276 @@ export default function ClientDetailPage() {
         ) : (
           <>
             <Card>
-              <CardHeader>
-                <CardTitle>Síðast gert</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {latestDetail ? (
-                  <>
-                    <p className="text-sm text-gray-600">{formatDateTime(latestDetail.startTime)} · {latestDetail.type ?? 'Meðferð'}</p>
-                    <p className="line-clamp-3 text-sm leading-6 text-gray-800">
-                      {primaryVisit?.soapA || primaryVisit?.soapS || latestDetail.note || 'Engin samantekt skráð.'}
-                    </p>
-                    <p className="line-clamp-2 text-sm leading-6 text-gray-700">
-                      Ráðleggingar: {primaryVisit?.soapP || 'Engar sértækar ráðleggingar skráðar.'}
-                    </p>
-                    {hasFollowUpAlert && (
-                      <p className="text-sm font-medium text-amber-700">Óunnið: Eftirfylgd nauðsynleg.</p>
-                    )}
-                    <div className="flex gap-2">
-                      <Link href={`/appointments/${latestDetail.id}`}>
-                        <Button size="sm">Skoða nánar</Button>
-                      </Link>
-                      {nextAppointment && (
-                        <Link href={`/visits/new?appointmentId=${nextAppointment.id}`}>
-                          <Button size="sm" variant="outline">Halda áfram</Button>
-                        </Link>
+              <CardContent className="space-y-3">
+                <div className="border-b border-gray-200" role="tablist" aria-label="Yfirlitsflipar">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('treatment')}
+                    role="tab"
+                    aria-selected={activeTab === 'treatment'}
+                    className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${activeTab === 'treatment' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-600 hover:text-gray-800'}`}
+                  >
+                    Meðferð
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('history')}
+                    role="tab"
+                    aria-selected={activeTab === 'history'}
+                    className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${activeTab === 'history' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-600 hover:text-gray-800'}`}
+                  >
+                    Saga
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('notes')}
+                    role="tab"
+                    aria-selected={activeTab === 'notes'}
+                    className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${activeTab === 'notes' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-600 hover:text-gray-800'}`}
+                  >
+                    Til minnis
+                  </button>
+                </div>
+
+                {activeTab === 'treatment' ? (
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-gray-700">S - Huglægt (hvað skjólstæðingur segir)</p>
+                      <textarea
+                        value={soapS}
+                        onChange={(event) => setSoapS(event.target.value)}
+                        rows={3}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        placeholder="Dæmi: Verkur í hæl síðustu 2 vikur, verstur á morgnana og við fyrstu skref."
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-gray-700">O - Hlutlægt (það sem þú sérð/mælir)</p>
+                      <textarea
+                        value={soapO}
+                        onChange={(event) => setSoapO(event.target.value)}
+                        rows={3}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        placeholder="Dæmi: Eymsli við palpation undir hæl, engin bólga, húð heil."
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-gray-700">A - Mat (klínískt mat/greining)</p>
+                      <textarea
+                        value={soapA}
+                        onChange={(event) => setSoapA(event.target.value)}
+                        rows={3}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        placeholder="Dæmi: Líklegt plantar fasciitis, vægt til miðlungs, engin rauð flögg."
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-gray-700">P - Áætlun (meðferð og næstu skref)</p>
+                      <textarea
+                        value={soapP}
+                        onChange={(event) => setSoapP(event.target.value)}
+                        rows={3}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        placeholder="Dæmi: Fræðsla + teygjuæfingar daglega, innlegg ráðlögð, endurmat eftir 2 vikur."
+                      />
+                    </div>
+
+                    <div className="rounded-lg border border-gray-200 p-3">
+                      <p className="text-xs font-medium text-gray-700">Myndir tengdar meðferð</p>
+                      <p className="mt-1 text-xs text-gray-500">Veldu myndir úr tæki eða taktu mynd beint í síma.</p>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <label className="inline-flex cursor-pointer items-center rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
+                          Taka mynd
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            className="hidden"
+                            onChange={(event) => handleTreatmentPhotoAdd(event, 'AFTER')}
+                          />
+                        </label>
+                        <label className="inline-flex cursor-pointer items-center rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
+                          Bæta við mynd
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            className="hidden"
+                            onChange={(event) => handleTreatmentPhotoAdd(event, 'AFTER')}
+                          />
+                        </label>
+                      </div>
+
+                      {treatmentPhotos.length > 0 && (
+                        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          {treatmentPhotos.map((photo, index) => (
+                            <div key={`${photo.file.name}-${index}`} className="relative overflow-hidden rounded-lg border border-gray-200">
+                              <Image
+                                src={photo.preview}
+                                alt={`Meðferðarmynd ${index + 1}`}
+                                width={160}
+                                height={120}
+                                className="h-24 w-full object-cover"
+                                unoptimized
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeTreatmentPhoto(index)}
+                                className="absolute right-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white"
+                              >
+                                Fjarlægja
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
-                  </>
-                ) : (
-                  <p className="text-gray-600">Engin síðasta meðferð fannst.</p>
-                )}
-              </CardContent>
-            </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Heilsufar / Áhætta</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Ofnæmi</p>
-                  {medical.allergies.length > 0 ? (
-                    <div className="mt-1 flex flex-wrap gap-2">
-                      {medical.allergies.map((item) => (
-                        <span key={item} className="rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-700">{item}</span>
-                      ))}
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" onClick={saveTreatment} disabled={savingTreatment}>
+                        {savingTreatment ? 'Vistar...' : 'Vista meðferð'}
+                      </Button>
+                      {treatmentMessage && <p className="text-xs text-gray-600">{treatmentMessage}</p>}
                     </div>
-                  ) : (
-                    <p className="mt-1 text-sm text-gray-600">Ekkert ofnæmi skráð.</p>
-                  )}
-                </div>
-
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Sjúkdómar</p>
-                  {medical.conditions.length > 0 ? (
-                    <div className="mt-1 flex flex-wrap gap-2">
-                      {medical.conditions.map((item) => (
-                        <span key={item} className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">{item}</span>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="mt-1 text-sm text-gray-600">Engir áhættuþættir skráðir.</p>
-                  )}
-                </div>
-
-                <details>
-                  <summary className="cursor-pointer text-sm font-medium text-gray-800">Lyf {medical.medications.length > 0 ? `(${medical.medications.length})` : ''}</summary>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {medical.medications.length > 0 ? (
-                      medical.medications.map((item) => (
-                        <span key={item} className="rounded-full bg-violet-100 px-2 py-1 text-xs font-medium text-violet-800">{item}</span>
-                      ))
-                    ) : (
-                      <p className="text-sm text-gray-600">Engin lyf skráð.</p>
-                    )}
                   </div>
-                </details>
-              </CardContent>
-            </Card>
+                ) : null}
 
-            {alerts.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Viðvörun</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-2">
-                    {alerts.map((alert) => (
-                      <li key={alert} className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">{alert}</li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
-            )}
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Komutíðni og saga í tölum</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <div className="rounded-lg bg-gray-50 p-3">
-                    <p className="text-xs text-gray-500">Komur alls</p>
-                    <p className="text-lg font-semibold text-gray-900">{appointments.length}</p>
-                  </div>
-                  <div className="rounded-lg bg-gray-50 p-3">
-                    <p className="text-xs text-gray-500">Síðustu 6 mán</p>
-                    <p className="text-lg font-semibold text-gray-900">{visitsLastSixMonths}</p>
-                  </div>
-                  <div className="rounded-lg bg-gray-50 p-3">
-                    <p className="text-xs text-gray-500">Millibil</p>
-                    <p className="text-lg font-semibold text-gray-900">{averageInterval !== null ? `${averageInterval} d` : '—'}</p>
-                  </div>
-                  <div className="rounded-lg bg-gray-50 p-3">
-                    <p className="text-xs text-gray-500">Síðast kom</p>
-                    <p className="text-sm font-semibold text-gray-900">{lastVisitDate ? formatDate(lastVisitDate) : '—'}</p>
-                  </div>
-                </div>
-
-                <div>
-                  <p className="mb-2 text-sm font-medium text-gray-800">Síðustu 3 heimsóknir</p>
-                  <div className="space-y-2">
-                    {appointments.slice(0, 3).map((appointment) => (
-                      <div key={appointment.id} className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2">
-                        <p className="text-sm text-gray-800">{formatDateTime(appointment.startTime)}</p>
-                        <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">
-                          {appointment.type ?? appointment.status}
-                        </span>
+                {activeTab === 'history' ? (
+                  <div className="space-y-4">
+                    <div>
+                      <div className="grid grid-cols-1 gap-3">
+                        <div className="rounded-lg bg-gray-50 p-3">
+                          <p className="text-xs text-gray-500">Tími frá síðustu komu</p>
+                          <p className="text-lg font-semibold text-gray-900">{daysSinceLastVisit !== null ? formatWeeksAndDays(daysSinceLastVisit) : '—'}</p>
+                        </div>
                       </div>
-                    ))}
+                    </div>
+
+                    <div>
+                      <p className="mb-2 text-sm font-medium text-gray-800">Síðustu 3 heimsóknir</p>
+                      {latestThreeAppointments.length === 0 ? (
+                        <p className="text-sm text-gray-600">Engar fyrri meðferðir skráðar.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {latestThreeAppointments.map((appointment) => (
+                            <div key={appointment.id} className="rounded-lg border border-gray-200 px-3 py-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-sm font-medium text-gray-900">{formatDateTime(appointment.startTime)}</p>
+                                <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">
+                                  {appointment.type ?? appointment.status}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-xs text-gray-600">Staða: {appointment.status}</p>
+                              {(() => {
+                                const latestVisit = appointmentDetailsById[appointment.id]?.visits?.[0];
+
+                                if (!latestVisit) {
+                                  return <p className="mt-1 text-xs text-gray-700">Engin SOAP skráning.</p>;
+                                }
+
+                                const soapLines = [
+                                  latestVisit.soapS ? `S: ${latestVisit.soapS}` : null,
+                                  latestVisit.soapO ? `O: ${latestVisit.soapO}` : null,
+                                  latestVisit.soapA ? `A: ${latestVisit.soapA}` : null,
+                                  latestVisit.soapP ? `P: ${latestVisit.soapP}` : null,
+                                ].filter((line): line is string => Boolean(line));
+
+                                return (
+                                  <div className="mt-1 space-y-1 text-xs text-gray-700">
+                                    {soapLines.length > 0 ? soapLines.map((line) => <p key={line}>{line}</p>) : <p>Engin SOAP skráning.</p>}
+                                  </div>
+                                );
+                              })()}
+
+                              {(() => {
+                                const latestVisit = appointmentDetailsById[appointment.id]?.visits?.[0];
+                                const photos = latestVisit?.photos?.filter((photo) => Boolean(photo.downloadUrl)) ?? [];
+
+                                if (photos.length === 0) {
+                                  return null;
+                                }
+
+                                return (
+                                  <div className="mt-2 grid grid-cols-3 gap-2">
+                                    {photos.map((photo) => (
+                                      <Image
+                                        key={photo.id}
+                                        src={photo.downloadUrl as string}
+                                        alt={`Mynd ${photo.type}`}
+                                        width={120}
+                                        height={80}
+                                        className="h-16 w-full rounded-md object-cover"
+                                        unoptimized
+                                      />
+                                    ))}
+                                  </div>
+                                );
+                              })()}
+
+                              <Link
+                                href={`/appointments/${appointment.id}`}
+                                className="mt-2 inline-flex text-xs font-medium text-blue-700 hover:text-blue-800"
+                              >
+                                Skoða heimsókn
+                              </Link>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {olderAppointments.length > 0 ? (
+                      <div className="space-y-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setShowOlderVisits((previous) => !previous)}
+                        >
+                          {showOlderVisits ? 'Sýna minna' : 'Sýna meira'}
+                        </Button>
+
+                        {showOlderVisits ? (
+                          <div className="space-y-2">
+                            {olderAppointments.map((appointment) => (
+                              <Link
+                                key={appointment.id}
+                                href={`/appointments/${appointment.id}`}
+                                className="block rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700"
+                              >
+                                {formatDateTime(appointment.startTime)} · {appointment.type ?? appointment.status}
+                              </Link>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
-                </div>
+                ) : null}
+
+                {activeTab === 'notes' ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={memoText}
+                      onChange={(event) => {
+                        setMemoText(event.target.value);
+                        setMemoMessage(null);
+                      }}
+                      rows={5}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      placeholder="Skrifaðu minnispunkta um skjólstæðing..."
+                    />
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" onClick={saveMemo} disabled={savingMemo}>
+                        {savingMemo ? 'Vistar...' : 'Vista minnispunkt'}
+                      </Button>
+                      {memoMessage && <p className="text-xs text-gray-600">{memoMessage}</p>}
+                    </div>
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
-
-            <div id="notes-card">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Athugasemdir</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Mikilvægt</p>
-                  <p className="mt-1 text-sm leading-6 text-blue-900">
-                    {primaryVisit?.soapP || latestDetail?.note || 'Engin pin-uð athugasemd skráð.'}
-                  </p>
-                </div>
-
-                <details>
-                  <summary className="cursor-pointer text-sm font-medium text-gray-800">Sjá allar</summary>
-                  <div className="mt-2 space-y-2">
-                    {appointments.slice(0, 6).map((appointment) => (
-                      <Link
-                        key={appointment.id}
-                        href={`/appointments/${appointment.id}`}
-                        className="block rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700"
-                      >
-                        {formatDateTime(appointment.startTime)} · {appointment.type ?? 'Meðferð'}
-                      </Link>
-                    ))}
-                  </div>
-                </details>
-                </CardContent>
-              </Card>
-            </div>
-
-            <div id="history-card">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Skráningar / skjöl</CardTitle>
-                </CardHeader>
-                <CardContent>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-lg border border-gray-200 p-3">
-                    <p className="text-xs text-gray-500">Myndir</p>
-                    <p className="text-base font-semibold text-gray-900">{photoCount}</p>
-                  </div>
-                  <div className="rounded-lg border border-gray-200 p-3">
-                    <p className="text-xs text-gray-500">Samþykki</p>
-                    <p className="text-base font-semibold text-gray-900">Óaðgengilegt</p>
-                  </div>
-                  <div className="rounded-lg border border-gray-200 p-3">
-                    <p className="text-xs text-gray-500">Skjöl</p>
-                    <p className="text-base font-semibold text-gray-900">0</p>
-                  </div>
-                  <div className="rounded-lg border border-gray-200 p-3">
-                    <p className="text-xs text-gray-500">Tilvísanir</p>
-                    <p className="text-base font-semibold text-gray-900">0</p>
-                  </div>
-                </div>
-                </CardContent>
-              </Card>
-            </div>
           </>
         )}
       </main>

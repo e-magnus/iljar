@@ -48,9 +48,14 @@ export interface DashboardSummaryResponse {
   todayCount: number;
   alerts: DashboardAlert[];
   metrics: {
-    dailyRevenue: number | null;
-    weekAppointments: number | null;
-    noShow30d: number | null;
+    weekBooked: number;
+    weekNoShow: number;
+    weekFreeSlots: number;
+  };
+  week: {
+    offset: number;
+    start: string;
+    end: string;
   };
   setupChecklist: SetupChecklistState;
   generatedAt: string;

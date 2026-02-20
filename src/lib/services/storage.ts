@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { GetObjectCommand, S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const s3Client = new S3Client({
@@ -12,6 +12,22 @@ const s3Client = new S3Client({
 
 const BUCKET_NAME = process.env.S3_BUCKET || 'iljar-photos';
 
+function assertS3Config() {
+  const accessKeyId = process.env.S3_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY;
+
+  if (!accessKeyId || !secretAccessKey) {
+    throw new Error('S3 configuration error: S3_ACCESS_KEY_ID og/eða S3_SECRET_ACCESS_KEY vantar.');
+  }
+
+  if (
+    accessKeyId.includes('your-access-key')
+    || secretAccessKey.includes('your-secret-key')
+  ) {
+    throw new Error('S3 configuration error: placeholder lyklar eru í notkun. Settu raunverulega S3 lykla í .env.');
+  }
+}
+
 /**
  * Generate a pre-signed URL for uploading a photo
  * @param key - The S3 object key (file path)
@@ -23,6 +39,8 @@ export async function generateUploadUrl(
   contentType: string,
   expiresIn: number = 300
 ): Promise<string> {
+  assertS3Config();
+
   const command = new PutObjectCommand({
     Bucket: BUCKET_NAME,
     Key: key,
@@ -42,7 +60,9 @@ export async function generateDownloadUrl(
   key: string,
   expiresIn: number = 3600
 ): Promise<string> {
-  const command = new PutObjectCommand({
+  assertS3Config();
+
+  const command = new GetObjectCommand({
     Bucket: BUCKET_NAME,
     Key: key,
   });

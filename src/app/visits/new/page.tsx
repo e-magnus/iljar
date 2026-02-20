@@ -57,7 +57,6 @@ function NewVisitForm() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
-  const [consentGiven, setConsentGiven] = useState(false);
 
   const handleTemplateSelect = (template: SOAPTemplate) => {
     setSoapS(template.s);
@@ -129,11 +128,6 @@ function NewVisitForm() {
     
     if (!appointmentId) {
       alert('Appointment ID missing');
-      return;
-    }
-
-    if (photos.length > 0 && !consentGiven) {
-      alert('Vinsamlegast staðfestu samþykki fyrir myndatöku');
       return;
     }
 
@@ -221,9 +215,9 @@ function NewVisitForm() {
         {/* SOAP Fields */}
         <Card>
           <CardHeader>
-            <CardTitle>S - Subjective (Huglægt)</CardTitle>
+            <CardTitle>S - Huglægt</CardTitle>
             <p className="text-sm text-gray-600 mt-1">
-              Hvað segir skjólstæðingur? Einkenni, kvartanir, saga.
+              Hvað skjólstæðingur segir: einkenni, kvartanir og saga.
             </p>
           </CardHeader>
           <CardContent>
@@ -232,16 +226,16 @@ function NewVisitForm() {
               onChange={(e) => setSoapS(e.target.value)}
               rows={4}
               className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 placeholder-gray-400 focus:border-transparent focus:ring-2 focus:ring-blue-500"
-              placeholder="T.d. Sjúklingur kvartar yfir verkjum í hæl..."
+              placeholder="Dæmi: Verkur í hæl síðustu 2 vikur, verstur á morgnana og við fyrstu skref."
             />
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>O - Objective (Hlutlægt)</CardTitle>
+            <CardTitle>O - Hlutlægt</CardTitle>
             <p className="text-sm text-gray-600 mt-1">
-              Hvað sést við skoðun? Mælingar, athuganir.
+              Það sem þú sérð eða mælir við skoðun.
             </p>
           </CardHeader>
           <CardContent>
@@ -250,16 +244,16 @@ function NewVisitForm() {
               onChange={(e) => setSoapO(e.target.value)}
               rows={4}
               className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 placeholder-gray-400 focus:border-transparent focus:ring-2 focus:ring-blue-500"
-              placeholder="T.d. Væg bólga greinist. Eðlileg hreyfigeta..."
+              placeholder="Dæmi: Eymsli við palpation undir hæl, engin bólga, húð heil."
             />
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>A - Assessment (Mat)</CardTitle>
+            <CardTitle>A - Mat</CardTitle>
             <p className="text-sm text-gray-600 mt-1">
-              Greining, niðurstaða matsins.
+              Klínískt mat og líkleg greining.
             </p>
           </CardHeader>
           <CardContent>
@@ -268,16 +262,16 @@ function NewVisitForm() {
               onChange={(e) => setSoapA(e.target.value)}
               rows={4}
               className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 placeholder-gray-400 focus:border-transparent focus:ring-2 focus:ring-blue-500"
-              placeholder="T.d. Líkleg plantarfasciitis..."
+              placeholder="Dæmi: Líklegt plantar fasciitis, vægt til miðlungs, engin rauð flögg."
             />
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>P - Plan (Áætlun)</CardTitle>
+            <CardTitle>P - Áætlun</CardTitle>
             <p className="text-sm text-gray-600 mt-1">
-              Meðferðaráætlun, næstu skref.
+              Meðferðaráætlun og næstu skref.
             </p>
           </CardHeader>
           <CardContent>
@@ -286,7 +280,7 @@ function NewVisitForm() {
               onChange={(e) => setSoapP(e.target.value)}
               rows={4}
               className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 placeholder-gray-400 focus:border-transparent focus:ring-2 focus:ring-blue-500"
-              placeholder="T.d. Teygjanæfingar. Endurmat eftir 2 vikur..."
+              placeholder="Dæmi: Fræðsla + teygjuæfingar daglega, innlegg ráðlögð, endurmat eftir 2 vikur."
             />
           </CardContent>
         </Card>
@@ -360,20 +354,6 @@ function NewVisitForm() {
                 </label>
               </div>
 
-              {/* Consent Checkbox */}
-              {photos.length > 0 && (
-                <label className="flex items-start gap-2">
-                  <input
-                    type="checkbox"
-                    checked={consentGiven}
-                    onChange={(e) => setConsentGiven(e.target.checked)}
-                    className="mt-1"
-                  />
-                  <span className="text-sm text-gray-700">
-                    Ég staðfesti að skjólstæðingur hefur veitt samþykki fyrir myndatöku og geymslu mynda í tengslum við meðferð.
-                  </span>
-                </label>
-              )}
             </div>
           </CardContent>
         </Card>

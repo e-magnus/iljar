@@ -8,6 +8,7 @@ All notable changes to the iljar project.
 
 - `npm run dev` now bootstraps local development automatically by running DB startup/migrations (`db:up`), checking seed presence, and only seeding when data is missing.
 - Added `npm run dev:app` for starting `next dev` without DB/seed bootstrap.
+- Removed manual consent checkbox from visit/client photo upload UI; consent metadata remains recorded automatically on upload.
 
 ### Added
 
@@ -91,7 +92,6 @@ All notable changes to the iljar project.
   - SOAP note entry (Subjective, Objective, Assessment, Plan)
   - Pre-defined templates for common conditions
   - Photo upload (Before/After)
-  - Consent checkbox
   - Photo preview and removal
 - Responsive design optimized for mobile devices
 - Icelandic language interface

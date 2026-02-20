@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { PrismaClient } from '@prisma/client';
+import { ClinicalFlag, PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import bcrypt from 'bcryptjs';
@@ -76,17 +76,17 @@ async function main() {
 
   const clients = [];
   for (let i = 0; i < clientNames.length; i++) {
-    const clinicalFlags =
+    const clinicalFlags: ClinicalFlag[] =
       i === 0
-        ? ['DIABETES']
+        ? [ClinicalFlag.DIABETES]
         : i === 1
-          ? ['ANTICOAGULANT']
+          ? [ClinicalFlag.ANTICOAGULANT]
           : i === 2
-            ? ['ALLERGY']
+            ? [ClinicalFlag.ALLERGY]
             : i === 3
-              ? ['DIABETES', 'ANTICOAGULANT']
+              ? [ClinicalFlag.DIABETES, ClinicalFlag.ANTICOAGULANT]
               : i === 4
-                ? ['NEUROPATHY']
+                ? [ClinicalFlag.NEUROPATHY]
                 : [];
 
     const client = await prisma.client.create({

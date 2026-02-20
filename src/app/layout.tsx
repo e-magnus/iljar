@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { DashboardNav } from "@/components/dashboard/DashboardNav";
 
 export const metadata: Metadata = {
   title: "iljar",
@@ -13,7 +14,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="is">
-      <body className="antialiased">
+      <body className="antialiased pb-20 lg:pb-0">
+        <DashboardNav />
         {children}
       </body>
     </html>

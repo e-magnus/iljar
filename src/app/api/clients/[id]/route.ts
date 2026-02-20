@@ -42,13 +42,17 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     const { id } = await context.params;
     const body = await request.json();
-    const { name, phone, kennitala } = body;
+    const { name, phone, kennitala, clinicalFlags, contactNote } = body;
 
-    if (!name || !phone) {
-      return NextResponse.json(
-        { error: 'name and phone are required' },
-        { status: 400 }
-      );
+    const validClinicalFlags = ['ANTICOAGULANT', 'DIABETES', 'ALLERGY', 'NEUROPATHY', 'PACEMAKER', 'OTHER'] as const;
+
+    if (clinicalFlags !== undefined) {
+      if (!Array.isArray(clinicalFlags) || !clinicalFlags.every((flag) => validClinicalFlags.includes(flag))) {
+        return NextResponse.json(
+          { error: 'clinicalFlags contains invalid values' },
+          { status: 400 }
+        );
+      }
     }
 
     const existingClient = await prisma.client.findUnique({
@@ -60,13 +64,44 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Client not found' }, { status: 404 });
     }
 
+    const updateData: {
+      name?: string;
+      phone?: string;
+      kennitala?: string | null;
+      clinicalFlags?: Array<(typeof validClinicalFlags)[number]>;
+      contactNote?: string | null;
+    } = {};
+
+    if (typeof name === 'string' && name.trim().length > 0) {
+      updateData.name = name.trim();
+    }
+
+    if (typeof phone === 'string' && phone.trim().length > 0) {
+      updateData.phone = phone.trim();
+    }
+
+    if (kennitala !== undefined) {
+      updateData.kennitala = kennitala;
+    }
+
+    if (clinicalFlags !== undefined) {
+      updateData.clinicalFlags = clinicalFlags;
+    }
+
+    if (contactNote !== undefined) {
+      updateData.contactNote = typeof contactNote === 'string' ? contactNote : null;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json(
+        { error: 'No valid fields provided for update' },
+        { status: 400 }
+      );
+    }
+
     const client = await prisma.client.update({
       where: { id },
-      data: {
-        name,
-        phone,
-        kennitala,
-      },
+      data: updateData,
     });
 
     await prisma.auditLog.create({

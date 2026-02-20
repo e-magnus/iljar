@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { requireAuth } from '@/lib/auth/guard';
+import { generateDownloadUrl } from '@/lib/services/storage';
 
 interface RouteParams {
   params: Promise<{
@@ -38,7 +39,28 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    return NextResponse.json({ appointment });
+    const visitsWithPhotoUrls = await Promise.all(
+      appointment.visits.map(async (visit) => {
+        const photosWithUrls = await Promise.all(
+          visit.photos.map(async (photo) => ({
+            ...photo,
+            downloadUrl: await generateDownloadUrl(photo.fileKey),
+          }))
+        );
+
+        return {
+          ...visit,
+          photos: photosWithUrls,
+        };
+      })
+    );
+
+    return NextResponse.json({
+      appointment: {
+        ...appointment,
+        visits: visitsWithPhotoUrls,
+      },
+    });
   } catch (error) {
     console.error('Get appointment error:', error);
     return NextResponse.json(

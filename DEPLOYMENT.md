@@ -239,20 +239,40 @@ tail -f ~/.pm2/logs/iljar-error.log
 2. Enable versioning
 3. Block all public access
 4. Set up lifecycle rules for old backups
-5. Configure CORS for photo uploads:
+5. Configure CORS for photo uploads (required for direct browser PUT to pre-signed URLs):
 
 ```json
 [
     {
         "AllowedHeaders": ["*"],
-        "AllowedMethods": ["GET", "PUT"],
-        "AllowedOrigins": ["https://yourdomain.com"],
-        "ExposeHeaders": []
+        "AllowedMethods": ["GET", "PUT", "HEAD"],
+        "AllowedOrigins": [
+            "https://yourdomain.com",
+            "http://localhost:3000",
+            "https://*.app.github.dev"
+        ],
+        "ExposeHeaders": ["ETag"],
+        "MaxAgeSeconds": 3000
     }
 ]
 ```
 
-6. Create IAM user with S3 permissions:
+6. Verify application S3 env values are real credentials (not placeholders):
+
+```env
+S3_ENDPOINT="https://s3.amazonaws.com"
+S3_BUCKET="iljar-photos-production"
+S3_ACCESS_KEY_ID="<real-access-key-id>"
+S3_SECRET_ACCESS_KEY="<real-secret-access-key>"
+S3_REGION="us-east-1"
+```
+
+7. Test from browser after applying bucket CORS:
+     - Open app and upload a photo
+     - In DevTools Network, `OPTIONS` and `PUT` to S3 should return success
+     - If it still fails, confirm the request origin exactly matches one of `AllowedOrigins`
+
+8. Create IAM user with S3 permissions:
 
 ```json
 {

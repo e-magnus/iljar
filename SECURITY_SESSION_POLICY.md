@@ -35,3 +35,17 @@ Refresh endpoint returns:
 - `400` with `code: REFRESH_REQUIRED` when refresh token is missing
 - `401` with `code: REFRESH_INVALID` when refresh token is invalid or expired
 - `401` with `code: REFRESH_USER_NOT_FOUND` when token user no longer exists
+
+## Operational Notes (Photo Upload)
+
+- Photo upload uses browser direct `PUT` to a pre-signed S3 URL.
+- CSP must allow outbound `connect-src` to S3 endpoints (for upload requests).
+- S3 bucket CORS must allow the app origins (for local dev and preview domains).
+- Required S3 env values must be real credentials (not placeholders):
+	- `S3_ENDPOINT`
+	- `S3_BUCKET`
+	- `S3_ACCESS_KEY_ID`
+	- `S3_SECRET_ACCESS_KEY`
+	- `S3_REGION`
+
+If upload fails with browser `CORS` or `Failed to fetch`, verify bucket CORS first, then credential validity.

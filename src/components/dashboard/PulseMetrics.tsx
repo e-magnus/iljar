@@ -1,45 +1,74 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 
 interface PulseMetricsProps {
-  dailyRevenue: number | null;
-  weekAppointments: number | null;
-  noShow30d: number | null;
+  weekLabel: string;
+  weekBooked: number;
+  weekNoShow: number;
+  weekFreeSlots: number;
+  onPreviousWeek: () => void;
+  onNextWeek: () => void;
 }
 
-function metricValue(value: number | null, formatter?: (value: number) => string): string {
-  if (value === null) {
-    return '—';
-  }
-
-  return formatter ? formatter(value) : String(value);
-}
-
-export function PulseMetrics({ dailyRevenue, weekAppointments, noShow30d }: PulseMetricsProps) {
+export function PulseMetrics({ weekLabel, weekBooked, weekNoShow, weekFreeSlots, onPreviousWeek, onNextWeek }: PulseMetricsProps) {
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Rekstrarpúls</CardTitle>
+      <CardHeader className="py-3">
+        <CardTitle>{weekLabel}</CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-lg bg-gray-50 p-3">
-            <p className="text-xs text-gray-600">Dagsvelta</p>
-            <p className="text-xl font-semibold text-gray-900">
-              {metricValue(dailyRevenue, (value) => `${value.toLocaleString('is-IS')} kr.`)}
-            </p>
+      <CardContent className="py-3">
+        <div className="flex items-center overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onPreviousWeek}
+            aria-label="Fara viku til baka"
+            className="m-1 h-8 min-w-8 rounded-md px-2"
+          >
+            ←
+          </Button>
+
+          <div className="flex flex-1 items-center justify-center gap-1 px-2 py-2" aria-label="Bókaðir tímar" title="Bókaðir tímar (mán-sun)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-gray-600" aria-hidden="true">
+              <rect x="3" y="5" width="18" height="16" rx="2" />
+              <path d="M3 10h18" />
+              <path d="M8 3v4M16 3v4" />
+            </svg>
+            <span className="text-base font-semibold text-gray-900">{weekBooked}</span>
           </div>
-          <div className="rounded-lg bg-gray-50 p-3">
-            <p className="text-xs text-gray-600">Tímar í viku</p>
-            <p className="text-xl font-semibold text-gray-900">{metricValue(weekAppointments)}</p>
+
+          <div className="h-6 w-px bg-gray-200" aria-hidden />
+
+          <div className="flex flex-1 items-center justify-center gap-1 px-2 py-2" aria-label="Lausir tímar" title="Lausir tímar (mán-sun)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-gray-600" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7v5l3 2" />
+            </svg>
+            <span className="text-base font-semibold text-gray-900">{weekFreeSlots}</span>
           </div>
-          <div className="rounded-lg bg-gray-50 p-3">
-            <p className="text-xs text-gray-600">No-show (30 dagar)</p>
-            <p className="text-xl font-semibold text-gray-900">{metricValue(noShow30d)}</p>
+
+          <div className="h-6 w-px bg-gray-200" aria-hidden />
+
+          <div className="flex flex-1 items-center justify-center gap-1 px-2 py-2" aria-label="Skróp" title="Skróp / no-show (mán-sun)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-gray-600" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M6 6l12 12" />
+            </svg>
+            <span className="text-base font-semibold text-gray-900">{weekNoShow}</span>
           </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onNextWeek}
+            aria-label="Fara viku fram"
+            className="m-1 h-8 min-w-8 rounded-md px-2"
+          >
+            →
+          </Button>
         </div>
-        <a href="/settings" className="mt-3 inline-block text-sm font-medium text-blue-700 hover:text-blue-900">
-          Sjá nánar
-        </a>
       </CardContent>
     </Card>
   );
