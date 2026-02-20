@@ -2,6 +2,7 @@ export interface DashboardClient {
   id: string;
   name: string;
   phone: string;
+  contactPhone?: string | null;
 }
 
 export interface DashboardAppointment {
@@ -30,6 +31,10 @@ export interface SetupChecklistState {
 }
 
 export interface DashboardSummaryResponse {
+  currentUser: {
+    name: string;
+    email: string | null;
+  };
   nextAppointment: DashboardAppointment | null;
   todayCount: number;
   alerts: DashboardAlert[];

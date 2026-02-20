@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { authFetch } from '@/lib/api/client';
 import { trackEvent } from '@/lib/analytics';
@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/Button';
 import { AlertsPanel } from '@/components/dashboard/AlertsPanel';
 import { DashboardNav } from '@/components/dashboard/DashboardNav';
 import { GlobalClientSearch } from '@/components/dashboard/GlobalClientSearch';
-import { NextAppointmentCard } from '@/components/dashboard/NextAppointmentCard';
 import { PulseMetrics } from '@/components/dashboard/PulseMetrics';
 import { QuickActions } from '@/components/dashboard/QuickActions';
 import { SetupChecklist } from '@/components/dashboard/SetupChecklist';
@@ -25,6 +24,7 @@ function todayIsoDate(): string {
 export default function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummaryResponse | null>(null);
   const [appointments, setAppointments] = useState<DashboardAppointment[]>([]);
+  const [selectedDate, setSelectedDate] = useState(todayIsoDate());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [authRequired, setAuthRequired] = useState(false);
@@ -34,7 +34,7 @@ export default function DashboardPage() {
 
     const [summaryRes, appointmentsRes] = await Promise.all([
       authFetch('/api/me/summary'),
-      authFetch(`/api/appointments?date=${todayIsoDate()}`),
+      authFetch(`/api/appointments?date=${selectedDate}`),
     ]);
 
     if (summaryRes.status === 401 || appointmentsRes.status === 401) {
@@ -52,7 +52,17 @@ export default function DashboardPage() {
     setSummary(summaryData);
     setAppointments(appointmentsData.appointments ?? []);
     setAuthRequired(false);
-  }, []);
+  }, [selectedDate]);
+
+  const shiftDate = (deltaDays: number) => {
+    setSelectedDate((previousDate) => {
+      const date = new Date(`${previousDate}T00:00:00`);
+      date.setDate(date.getDate() + deltaDays);
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${date.getFullYear()}-${month}-${day}`;
+    });
+  };
 
   useEffect(() => {
     trackEvent('view_dashboard');
@@ -86,20 +96,6 @@ export default function DashboardPage() {
     };
   }, [fetchDashboard]);
 
-  const updateStatus = async (appointmentId: string, action: 'arrived' | 'completed' | 'no_show') => {
-    const response = await authFetch(`/api/appointments/${appointmentId}/status`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action }),
-    });
-
-    if (!response.ok) {
-      throw new Error('Ekki tókst að uppfæra stöðu');
-    }
-
-    await fetchDashboard();
-  };
-
   const onRetry = async () => {
     setLoading(true);
     setError(null);
@@ -112,11 +108,6 @@ export default function DashboardPage() {
       setLoading(false);
     }
   };
-
-  const topCardAppointment = useMemo(
-    () => summary?.nextAppointment ?? appointments.find((appointment) => appointment.status === 'BOOKED') ?? null,
-    [summary, appointments]
-  );
 
   if (loading) {
     return (
@@ -152,35 +143,28 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 lg:pb-0">
-      <div className="flex min-h-screen">
+      <div className="min-h-screen">
         <DashboardNav />
 
         <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
           <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Heim</h1>
-              <p className="text-sm text-gray-600">Hvað þarf að gera núna og hvernig gengur reksturinn</p>
+              <p className="text-sm text-gray-600">Innskráður notandi: {summary.currentUser.name}</p>
             </div>
             <div className="flex items-center gap-2">
               <GlobalClientSearch />
-              <Button variant="outline" onClick={onRetry}>Uppfæra</Button>
+              <Button variant="outline" onClick={onRetry}>Leita</Button>
             </div>
           </div>
 
           <div className="grid gap-6 lg:grid-cols-3">
             <div className="space-y-6 lg:col-span-2">
-              <NextAppointmentCard
-                appointment={topCardAppointment}
-                onMarkArrived={async (id) => updateStatus(id, 'arrived')}
-                onOpenReschedule={(id) => {
-                  window.location.href = `/appointments/${id}`;
-                }}
-              />
-
               <TodayTimeline
+                selectedDate={selectedDate}
                 appointments={appointments}
-                onMarkCompleted={async (id) => updateStatus(id, 'completed')}
-                onMarkNoShow={async (id) => updateStatus(id, 'no_show')}
+                onPreviousDay={() => shiftDate(-1)}
+                onNextDay={() => shiftDate(1)}
               />
 
               <QuickActions />

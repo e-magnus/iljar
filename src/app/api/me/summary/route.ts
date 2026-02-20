@@ -29,8 +29,12 @@ export async function GET(request: NextRequest) {
     const plus48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
     const days30Ago = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    const [nextAppointment, todayCount, unconfirmed48hCount, noShow30d, noShowToday, weekAppointments, settings, availabilityCount] =
+    const [currentUser, nextAppointment, todayCount, unconfirmed48hCount, noShow30d, noShowToday, weekAppointments, settings, availabilityCount] =
       await Promise.all([
+        prisma.user.findUnique({
+          where: { id: auth.payload.userId },
+          select: { email: true },
+        }),
         prisma.appointment.findFirst({
           where: {
             startTime: { gte: now },
@@ -117,6 +121,10 @@ export async function GET(request: NextRequest) {
     ].filter(Boolean).slice(0, 3);
 
     return NextResponse.json({
+      currentUser: {
+        name: currentUser?.email?.split('@')[0] ?? 'Þórey Kristín Aðalsteinsdóttir',
+        email: currentUser?.email ?? auth.payload.email ?? null,
+      },
       nextAppointment,
       todayCount,
       alerts,
