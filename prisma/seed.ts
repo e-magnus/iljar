@@ -58,26 +58,26 @@ async function main() {
 
   await prisma.service.createMany({
     data: [
-      { name: 'Full fótaaðgerð', durationMinutes: 60, isDefault: true },
-      { name: 'Fótaaðgerð', durationMinutes: 30, isDefault: true },
-      { name: 'Smáaðgerð', durationMinutes: 15, isDefault: true },
+      { name: 'Full fótaaðgerð', durationMinutes: 60, displayOrder: 0, isDefault: true },
+      { name: 'Fótaaðgerð', durationMinutes: 30, displayOrder: 1, isDefault: true },
+      { name: 'Smáaðgerð', durationMinutes: 15, displayOrder: 2, isDefault: true },
     ],
     skipDuplicates: true,
   });
 
   await prisma.service.updateMany({
     where: { name: 'Full fótaaðgerð' },
-    data: { durationMinutes: 60, isDefault: true },
+    data: { durationMinutes: 60, displayOrder: 0, isDefault: true },
   });
 
   await prisma.service.updateMany({
     where: { name: 'Fótaaðgerð' },
-    data: { durationMinutes: 30, isDefault: true },
+    data: { durationMinutes: 30, displayOrder: 1, isDefault: true },
   });
 
   await prisma.service.updateMany({
     where: { name: 'Smáaðgerð' },
-    data: { durationMinutes: 15, isDefault: true },
+    data: { durationMinutes: 15, displayOrder: 2, isDefault: true },
   });
   console.log('✓ Created default services');
 

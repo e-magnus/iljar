@@ -17,10 +17,11 @@ interface Service {
   id: string;
   name: string;
   durationMinutes: number;
+  displayOrder: number;
   isDefault: boolean;
 }
 
-interface CustomClinicalFlag {
+interface CustomFlag {
   label: string;
   icon: string;
 }
@@ -38,7 +39,7 @@ interface SettingsResponse {
     workingHours: WorkingHour[];
   };
   clinical: {
-    customFlags: CustomClinicalFlag[];
+    customFlags: CustomFlag[];
   };
   notifications: {
     remindersConfigured: boolean;
@@ -58,6 +59,19 @@ const weekdayLabels: Record<number, string> = {
 
 const weekdayDisplayOrder = [1, 2, 3, 4, 5, 6, 0];
 const clinicalFlagIconOptions = ['🩸', '🧪', '⚠️', '🦶', '❤️', 'ℹ️', '🫀', '🫁', '🦴', '💊', '🩹', '🧬'];
+const builtInClinicalFlags: CustomFlag[] = [
+  { label: 'Blóðþynning', icon: '🩸' },
+  { label: 'Sykursýki', icon: '🧪' },
+  { label: 'Ofnæmi', icon: '⚠️' },
+  { label: 'Taugakvilli', icon: '🦶' },
+  { label: 'Gangráður', icon: '❤️' },
+  { label: 'Annað', icon: 'ℹ️' },
+];
+const FLAGS_CONFIG_MARKER = '__FLAGS_CONFIGURED_V1__';
+
+function isFlagsConfigMarker(label: string): boolean {
+  return label === FLAGS_CONFIG_MARKER;
+}
 
 function defaultWorkingHours(): WorkingHour[] {
   return Array.from({ length: 7 }, (_, weekday) => ({
@@ -93,21 +107,12 @@ function isTimeFormat(value: string): boolean {
   return timeRegex.test(value);
 }
 
-function sortServices(items: Service[]): Service[] {
-  return [...items].sort((a, b) => {
-    if (a.durationMinutes === b.durationMinutes) {
-      return a.name.localeCompare(b.name, 'is');
-    }
-    return a.durationMinutes - b.durationMinutes;
-  });
-}
-
 function normalizeFlagLabel(value: string): string {
   return value.trim().replace(/\s+/g, ' ');
 }
 
-function normalizeCustomFlags(input: CustomClinicalFlag[]): CustomClinicalFlag[] {
-  const deduped = new Map<string, CustomClinicalFlag>();
+function normalizeFlags(input: CustomFlag[]): CustomFlag[] {
+  const deduped = new Map<string, CustomFlag>();
 
   for (const item of input) {
     const label = normalizeFlagLabel(item.label);
@@ -124,15 +129,15 @@ function normalizeCustomFlags(input: CustomClinicalFlag[]): CustomClinicalFlag[]
     }
   }
 
-  return Array.from(deduped.values()).sort((a, b) => a.label.localeCompare(b.label, 'is'));
+  return Array.from(deduped.values());
 }
 
-function readCustomFlags(input: unknown): CustomClinicalFlag[] {
+function readFlags(input: unknown): CustomFlag[] {
   if (!Array.isArray(input)) {
     return [];
   }
 
-  const parsed: CustomClinicalFlag[] = [];
+  const parsed: CustomFlag[] = [];
   for (const item of input) {
     if (typeof item === 'string') {
       parsed.push({ label: item, icon: 'ℹ️' });
@@ -150,7 +155,18 @@ function readCustomFlags(input: unknown): CustomClinicalFlag[] {
     });
   }
 
-  return normalizeCustomFlags(parsed);
+  return normalizeFlags(parsed);
+}
+
+function resolveManagedFlags(input: CustomFlag[]): CustomFlag[] {
+  const hasConfiguredMarker = input.some((flag) => isFlagsConfigMarker(flag.label));
+  const withoutMarker = input.filter((flag) => !isFlagsConfigMarker(flag.label));
+
+  if (hasConfiguredMarker) {
+    return withoutMarker;
+  }
+
+  return normalizeFlags([...builtInClinicalFlags, ...withoutMarker]);
 }
 
 export default function SettingsPage() {
@@ -170,14 +186,17 @@ export default function SettingsPage() {
   const [initialBlockRedDays, setInitialBlockRedDays] = useState(false);
   const [workingHours, setWorkingHours] = useState<WorkingHour[]>(defaultWorkingHours());
   const [initialWorkingHours, setInitialWorkingHours] = useState<WorkingHour[]>(defaultWorkingHours());
-  const [customClinicalFlags, setCustomClinicalFlags] = useState<CustomClinicalFlag[]>([]);
-  const [initialCustomClinicalFlags, setInitialCustomClinicalFlags] = useState<CustomClinicalFlag[]>([]);
+  const [customFlags, setCustomFlags] = useState<CustomFlag[]>([]);
+  const [initialCustomFlags, setInitialCustomFlags] = useState<CustomFlag[]>([]);
   const [customFlagLabel, setCustomFlagLabel] = useState('');
   const [customFlagIcon, setCustomFlagIcon] = useState('ℹ️');
-  const [editingCustomFlagLabel, setEditingCustomFlagLabel] = useState<string | null>(null);
-  const [savingClinical, setSavingClinical] = useState(false);
-  const [clinicalError, setClinicalError] = useState('');
-  const [clinicalSuccess, setClinicalSuccess] = useState('');
+  const [editingFlagLabel, setEditingFlagLabel] = useState<string | null>(null);
+  const [draggingFlagLabel, setDraggingFlagLabel] = useState<string | null>(null);
+  const [dragOverFlagLabel, setDragOverFlagLabel] = useState<string | null>(null);
+  const [savingFlags, setSavingFlags] = useState(false);
+  const [refreshingFlags, setRefreshingFlags] = useState(false);
+  const [flagError, setFlagError] = useState('');
+  const [flagSuccess, setFlagSuccess] = useState('');
 
   const [totpSecret, setTotpSecret] = useState('');
   const [totpQrCode, setTotpQrCode] = useState('');
@@ -194,6 +213,9 @@ export default function SettingsPage() {
   const [serviceError, setServiceError] = useState('');
   const [serviceSuccess, setServiceSuccess] = useState('');
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
+  const [draggingServiceId, setDraggingServiceId] = useState<string | null>(null);
+  const [dragOverServiceId, setDragOverServiceId] = useState<string | null>(null);
+  const [serviceRefreshing, setServiceRefreshing] = useState(false);
 
   const slotLengthValid = Number.isInteger(slotLength) && slotLength >= 5 && slotLength <= 180;
   const bufferTimeValid = Number.isInteger(bufferTime) && bufferTime >= 0 && bufferTime <= 60;
@@ -218,8 +240,8 @@ export default function SettingsPage() {
   }, [workingHours]);
 
   const canSaveScheduling = hasSchedulingChanges && workingHoursValid && !savingScheduling;
-  const hasClinicalChanges = JSON.stringify(customClinicalFlags) !== JSON.stringify(initialCustomClinicalFlags);
-  const canSaveClinical = hasClinicalChanges && !savingClinical;
+  const hasFlagChanges = JSON.stringify(customFlags) !== JSON.stringify(initialCustomFlags);
+  const canSaveFlags = hasFlagChanges && !savingFlags;
 
   const bookingValidationMessage = useMemo(() => {
     if (!slotLengthValid) {
@@ -250,7 +272,9 @@ export default function SettingsPage() {
         }
 
         if (servicesRes.ok) {
-          setServices(sortServices(servicesData.services ?? []));
+          setServices(servicesData.services ?? []);
+        } else {
+          setServiceError(servicesData.error ?? 'Gat ekki sótt þjónustulista.');
         }
 
         const settings = data as SettingsResponse;
@@ -265,9 +289,9 @@ export default function SettingsPage() {
         const normalizedWorkingHours = normalizeWorkingHours(settings.scheduling.workingHours);
         setWorkingHours(normalizedWorkingHours);
         setInitialWorkingHours(normalizedWorkingHours);
-        const customFlags = readCustomFlags(settings.clinical?.customFlags);
-        setCustomClinicalFlags(customFlags);
-        setInitialCustomClinicalFlags(customFlags);
+        const loadedFlags = resolveManagedFlags(readFlags(settings.clinical?.customFlags));
+        setCustomFlags(loadedFlags);
+        setInitialCustomFlags(loadedFlags);
       } catch {
         setError('Villa kom upp við að tengjast þjóni.');
       } finally {
@@ -376,9 +400,9 @@ export default function SettingsPage() {
     }
   };
 
-  const handleAddCustomClinicalFlag = () => {
-    setClinicalError('');
-    setClinicalSuccess('');
+  const handleAddFlag = () => {
+    setFlagError('');
+    setFlagSuccess('');
 
     const normalized = normalizeFlagLabel(customFlagLabel);
     if (!normalized) {
@@ -386,69 +410,76 @@ export default function SettingsPage() {
     }
 
     if (normalized.length < 2 || normalized.length > 40) {
-      setClinicalError('Flagg þarf að vera 2-40 stafir.');
+      setFlagError('Flagg þarf að vera 2-40 stafir.');
       return;
     }
 
-    const exists = customClinicalFlags.some(
+    const normalizedKey = normalized.toLocaleLowerCase('is');
+
+    const exists = customFlags.some(
       (item) =>
-        item.label.toLocaleLowerCase('is') === normalized.toLocaleLowerCase('is') &&
-        item.label.toLocaleLowerCase('is') !== editingCustomFlagLabel?.toLocaleLowerCase('is')
+        item.label.toLocaleLowerCase('is') === normalizedKey &&
+        item.label.toLocaleLowerCase('is') !== editingFlagLabel?.toLocaleLowerCase('is')
     );
 
     if (exists) {
-      setClinicalError('Þetta flagg er nú þegar til.');
+      setFlagError('Þetta flagg er nú þegar til.');
       return;
     }
 
-    const nextItem: CustomClinicalFlag = { label: normalized, icon: customFlagIcon };
+    const nextItem: CustomFlag = { label: normalized, icon: customFlagIcon };
 
-    const next = editingCustomFlagLabel
-      ? customClinicalFlags.map((item) =>
-          item.label.toLocaleLowerCase('is') === editingCustomFlagLabel.toLocaleLowerCase('is')
+    const next = editingFlagLabel
+      ? customFlags.map((item) =>
+          item.label.toLocaleLowerCase('is') === editingFlagLabel.toLocaleLowerCase('is')
             ? nextItem
             : item
         )
-      : [...customClinicalFlags, nextItem];
+      : [...customFlags, nextItem];
 
-    setCustomClinicalFlags(normalizeCustomFlags(next));
+    setCustomFlags(normalizeFlags(next));
     setCustomFlagLabel('');
     setCustomFlagIcon('ℹ️');
-    setEditingCustomFlagLabel(null);
+    setEditingFlagLabel(null);
   };
 
-  const handleEditCustomClinicalFlag = (flag: CustomClinicalFlag) => {
-    setClinicalError('');
-    setClinicalSuccess('');
+  const handleEditFlag = (flag: CustomFlag) => {
+    setFlagError('');
+    setFlagSuccess('');
     setCustomFlagLabel(flag.label);
     setCustomFlagIcon(flag.icon);
-    setEditingCustomFlagLabel(flag.label);
+    setEditingFlagLabel(flag.label);
   };
 
-  const handleCancelCustomClinicalFlagEdit = () => {
+  const handleCancelFlagEdit = () => {
     setCustomFlagLabel('');
     setCustomFlagIcon('ℹ️');
-    setEditingCustomFlagLabel(null);
+    setEditingFlagLabel(null);
   };
 
-  const handleRemoveCustomClinicalFlag = (flagToRemove: CustomClinicalFlag) => {
-    setClinicalError('');
-    setClinicalSuccess('');
-    setCustomClinicalFlags((current) => current.filter((flag) => flag.label !== flagToRemove.label));
+  const handleRemoveFlag = (flagToRemove: CustomFlag) => {
+    setFlagError('');
+    setFlagSuccess('');
+    setCustomFlags((current) => current.filter((flag) => flag.label !== flagToRemove.label));
 
-    if (editingCustomFlagLabel?.toLocaleLowerCase('is') === flagToRemove.label.toLocaleLowerCase('is')) {
-      handleCancelCustomClinicalFlagEdit();
+    if (draggingFlagLabel === flagToRemove.label) {
+      setDraggingFlagLabel(null);
+      setDragOverFlagLabel(null);
+    }
+
+    if (editingFlagLabel?.toLocaleLowerCase('is') === flagToRemove.label.toLocaleLowerCase('is')) {
+      handleCancelFlagEdit();
     }
   };
 
-  const handleSaveClinicalFlags = async () => {
-    if (!canSaveClinical) {
+  const handleSaveFlags = async () => {
+    if (!canSaveFlags) {
       return;
     }
 
-    setSavingClinical(true);
-    setClinicalError('');
-    setClinicalSuccess('');
+    setSavingFlags(true);
+    setFlagError('');
+    setFlagSuccess('');
 
     try {
       const res = await authFetch('/api/settings', {
@@ -456,7 +487,7 @@ export default function SettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clinical: {
-            customFlags: customClinicalFlags,
+            customFlags: [...customFlags, { label: FLAGS_CONFIG_MARKER, icon: 'ℹ️' }],
           },
         }),
       });
@@ -464,20 +495,80 @@ export default function SettingsPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setClinicalError(data.error ?? 'Ekki tókst að vista klínísk flögg.');
+        setFlagError(data.error ?? 'Ekki tókst að vista flögg.');
         return;
       }
 
-      const savedFlags = readCustomFlags(data.clinical?.customFlags);
-      setCustomClinicalFlags(savedFlags);
-      setInitialCustomClinicalFlags(savedFlags);
-      setClinicalSuccess('Klínísk flögg vistuð.');
-      handleCancelCustomClinicalFlagEdit();
+      await refreshFlags();
+      setFlagSuccess('Flögg vistuð.');
+      handleCancelFlagEdit();
     } catch {
-      setClinicalError('Villa kom upp við vistun klínískra flagga.');
+      setFlagError('Villa kom upp við vistun flagga.');
     } finally {
-      setSavingClinical(false);
+      setSavingFlags(false);
     }
+  };
+
+  const refreshFlags = async (options?: { showSuccessMessage?: boolean }) => {
+    const res = await authFetch('/api/settings');
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error ?? 'Gat ekki sótt flögg.');
+    }
+
+    const flags = resolveManagedFlags(readFlags(data.clinical?.customFlags));
+    setCustomFlags(flags);
+    setInitialCustomFlags(flags);
+
+    if (options?.showSuccessMessage) {
+      setFlagSuccess('Flögg uppfærð.');
+    }
+  };
+
+  const handleRefreshFlags = async () => {
+    setRefreshingFlags(true);
+    setFlagError('');
+    setFlagSuccess('');
+
+    try {
+      await refreshFlags({ showSuccessMessage: true });
+    } catch {
+      setFlagError('Villa kom upp við að sækja flögg.');
+    } finally {
+      setRefreshingFlags(false);
+    }
+  };
+
+  const moveFlag = (items: CustomFlag[], sourceLabel: string, targetLabel: string): CustomFlag[] => {
+    if (!sourceLabel || !targetLabel || sourceLabel === targetLabel) {
+      return items;
+    }
+
+    const sourceIndex = items.findIndex((item) => item.label === sourceLabel);
+    const targetIndex = items.findIndex((item) => item.label === targetLabel);
+    if (sourceIndex === -1 || targetIndex === -1) {
+      return items;
+    }
+
+    const next = [...items];
+    const [moved] = next.splice(sourceIndex, 1);
+    next.splice(targetIndex, 0, moved);
+    return next;
+  };
+
+  const handleFlagDrop = (targetLabel: string, sourceLabel?: string) => {
+    const draggedLabel = sourceLabel ?? draggingFlagLabel;
+    if (!draggedLabel || draggedLabel === targetLabel) {
+      setDragOverFlagLabel(null);
+      return;
+    }
+
+    setCustomFlags((current) => moveFlag(current, draggedLabel, targetLabel));
+    setDraggingFlagLabel(null);
+    setDragOverFlagLabel(null);
+    setFlagError('');
+    setFlagSuccess('Röðun uppfærð. Smelltu á „Vista flögg“ til að staðfesta.');
   };
 
   const handleStartTotpSetup = async () => {
@@ -583,10 +674,6 @@ export default function SettingsPage() {
   };
 
   const handleEditService = (service: Service) => {
-    if (service.isDefault) {
-      return;
-    }
-
     setEditingServiceId(service.id);
     setServiceName(service.name);
     setServiceDuration(service.durationMinutes);
@@ -641,10 +728,10 @@ export default function SettingsPage() {
 
       const savedService = data.service as Service;
       setServices((current) => {
-        const next = isEditing
-          ? current.map((item) => (item.id === savedService.id ? savedService : item))
-          : [...current, savedService];
-        return sortServices(next);
+        if (isEditing) {
+          return current.map((item) => (item.id === savedService.id ? { ...item, ...savedService } : item));
+        }
+        return [...current, savedService];
       });
 
       setServiceName('');
@@ -659,10 +746,6 @@ export default function SettingsPage() {
   };
 
   const handleDeleteService = async (service: Service) => {
-    if (service.isDefault) {
-      return;
-    }
-
     const confirmed = window.confirm(`Eyða þjónustu „${service.name}“?`);
     if (!confirmed) {
       return;
@@ -689,6 +772,98 @@ export default function SettingsPage() {
       setServiceSuccess('Þjónustu eytt.');
     } catch {
       setServiceError('Villa kom upp við að eyða þjónustu.');
+    } finally {
+      setServiceSaving(false);
+    }
+  };
+
+  const refreshServices = async (options?: { showSuccessMessage?: boolean }) => {
+    const res = await authFetch('/api/services');
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error ?? 'Gat ekki sótt þjónustulista.');
+    }
+
+    setServices(data.services ?? []);
+
+    if (options?.showSuccessMessage) {
+      setServiceSuccess('Þjónustulisti uppfærður.');
+    }
+  };
+
+  const handleRefreshServices = async () => {
+    setServiceRefreshing(true);
+    setServiceError('');
+    setServiceSuccess('');
+
+    try {
+      await refreshServices({ showSuccessMessage: true });
+    } catch {
+      setServiceError('Villa kom upp við að sækja þjónustulista.');
+    } finally {
+      setServiceRefreshing(false);
+    }
+  };
+
+  const moveService = (items: Service[], sourceId: string, targetId: string): Service[] => {
+    if (!sourceId || !targetId || sourceId === targetId) {
+      return items;
+    }
+
+    const sourceIndex = items.findIndex((item) => item.id === sourceId);
+    const targetIndex = items.findIndex((item) => item.id === targetId);
+    if (sourceIndex === -1 || targetIndex === -1) {
+      return items;
+    }
+
+    const next = [...items];
+    const [moved] = next.splice(sourceIndex, 1);
+    next.splice(targetIndex, 0, moved);
+    return next;
+  };
+
+  const persistServiceOrder = async (ordered: Service[]) => {
+    const orderedIds = ordered.map((service) => service.id);
+    const res = await authFetch('/api/services', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderedIds }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error ?? 'Ekki tókst að vista röðun.');
+    }
+
+    const orderedServices = data.services as Service[] | undefined;
+    if (orderedServices) {
+      setServices(orderedServices);
+    }
+  };
+
+  const handleServiceDrop = async (targetServiceId: string) => {
+    if (!draggingServiceId || draggingServiceId === targetServiceId) {
+      setDragOverServiceId(null);
+      return;
+    }
+
+    const previous = services;
+    const reordered = moveService(previous, draggingServiceId, targetServiceId);
+    setServices(reordered);
+    setDraggingServiceId(null);
+    setDragOverServiceId(null);
+    setServiceSaving(true);
+    setServiceError('');
+    setServiceSuccess('');
+
+    try {
+      await persistServiceOrder(reordered);
+      await refreshServices();
+      setServiceSuccess('Röðun þjónusta vistuð.');
+    } catch {
+      setServices(previous);
+      setServiceError('Villa kom upp við vistun röðunar.');
     } finally {
       setServiceSaving(false);
     }
@@ -863,7 +1038,12 @@ export default function SettingsPage() {
         <div id="services">
           <Card>
             <CardHeader>
-              <CardTitle>Þjónustur</CardTitle>
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle>Þjónustur</CardTitle>
+                <Button type="button" variant="outline" size="sm" onClick={handleRefreshServices} disabled={serviceRefreshing || serviceSaving}>
+                  {serviceRefreshing ? 'Sæki...' : 'Uppfæra lista'}
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
             {loading ? (
@@ -871,29 +1051,52 @@ export default function SettingsPage() {
             ) : (
               <div className="space-y-4">
                 <div className="space-y-2">
+                  <p className="text-sm text-gray-600">Dragðu þjónustur upp og niður til að velja röð í bókunarlista.</p>
                   {services.length === 0 ? (
                     <p className="text-sm text-gray-600">Engar þjónustur skráðar.</p>
                   ) : (
                     services.map((service) => (
-                      <div key={service.id} className="rounded-lg border border-gray-200 p-3">
+                      <div
+                        key={service.id}
+                        draggable={!serviceSaving}
+                        onDragStart={() => setDraggingServiceId(service.id)}
+                        onDragEnd={() => {
+                          setDraggingServiceId(null);
+                          setDragOverServiceId(null);
+                        }}
+                        onDragOver={(event) => {
+                          event.preventDefault();
+                          if (dragOverServiceId !== service.id) {
+                            setDragOverServiceId(service.id);
+                          }
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          void handleServiceDrop(service.id);
+                        }}
+                        className={`rounded-lg border p-3 ${dragOverServiceId === service.id ? 'border-blue-300 bg-blue-50' : 'border-gray-200'}`}
+                      >
                         <div className="flex items-center justify-between gap-2">
-                          <div>
+                          <div className="flex items-start gap-2">
+                            <span className="cursor-grab text-gray-400" aria-hidden>
+                              ⋮⋮
+                            </span>
+                            <div>
                             <p className="font-medium text-gray-900">{service.name}</p>
                             <p className="text-sm text-gray-600">{service.durationMinutes} mínútur</p>
                             {service.isDefault ? (
                               <p className="text-xs text-gray-500">Sjálfgefin þjónusta</p>
                             ) : null}
-                          </div>
-                          {!service.isDefault ? (
-                            <div className="flex gap-2">
-                              <Button size="sm" variant="outline" onClick={() => handleEditService(service)}>
-                                Breyta
-                              </Button>
-                              <Button size="sm" variant="secondary" onClick={() => handleDeleteService(service)}>
-                                Eyða
-                              </Button>
                             </div>
-                          ) : null}
+                          </div>
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" onClick={() => handleEditService(service)}>
+                              Breyta
+                            </Button>
+                            <Button size="sm" variant="secondary" onClick={() => handleDeleteService(service)}>
+                              Eyða
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     ))
@@ -902,7 +1105,7 @@ export default function SettingsPage() {
 
                 <form onSubmit={handleSaveService} className="rounded-lg border border-gray-200 p-4 space-y-3">
                   <p className="text-sm font-medium text-gray-700">
-                    {editingServiceId ? 'Breyta þjónustu' : 'Stofna eigin þjónustu'}
+                    {editingServiceId ? 'Breyta þjónustu' : 'Stofna þjónustu'}
                   </p>
 
                   <input
@@ -954,13 +1157,26 @@ export default function SettingsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Klínísk sérflögg</CardTitle>
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle>Flögg</CardTitle>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleRefreshFlags}
+                disabled={refreshingFlags || savingFlags}
+              >
+                {refreshingFlags ? 'Sæki...' : 'Uppfæra lista'}
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             {loading ? (
               <p className="text-gray-600">Hleður...</p>
             ) : (
               <div className="space-y-4">
+                <p className="text-xs text-gray-500">Öll flögg eru í sama lista og má breyta, eyða og raða.</p>
+
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <input
                     type="text"
@@ -969,10 +1185,10 @@ export default function SettingsPage() {
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
-                        handleAddCustomClinicalFlag();
+                        handleAddFlag();
                       }
                     }}
-                    placeholder="Nýtt sérflagg (t.d. Blóðþrýstingur)"
+                    placeholder="Nýtt flagg (t.d. Blóðþrýstingur)"
                     className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder-gray-400"
                   />
                   <select
@@ -985,51 +1201,86 @@ export default function SettingsPage() {
                       <option key={icon} value={icon}>{icon}</option>
                     ))}
                   </select>
-                  <Button type="button" variant="outline" onClick={handleAddCustomClinicalFlag}>
-                    {editingCustomFlagLabel ? 'Vista flagg' : 'Bæta við'}
+                  <Button type="button" variant="outline" onClick={handleAddFlag}>
+                    {editingFlagLabel ? 'Vista breytingar' : 'Bæta við'}
                   </Button>
-                  {editingCustomFlagLabel ? (
-                    <Button type="button" variant="secondary" onClick={handleCancelCustomClinicalFlagEdit}>
+                  {editingFlagLabel ? (
+                    <Button type="button" variant="secondary" onClick={handleCancelFlagEdit}>
                       Hætta við
                     </Button>
                   ) : null}
                 </div>
 
-                {customClinicalFlags.length === 0 ? (
-                  <p className="text-sm text-gray-600">Engin sérflögg skráð.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {customClinicalFlags.map((flag) => (
-                      <div key={flag.label} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-3">
-                        <p className="text-sm text-gray-800">{flag.icon} {flag.label}</p>
+                <div className="space-y-2">
+                  {customFlags.map((flag) => (
+                      <div
+                        key={flag.label}
+                        draggable={!savingFlags && !refreshingFlags}
+                        onDragStart={(event) => {
+                          event.dataTransfer.effectAllowed = 'move';
+                          event.dataTransfer.setData('text/plain', flag.label);
+                          setDraggingFlagLabel(flag.label);
+                        }}
+                        onDragOver={(event) => {
+                          event.preventDefault();
+                          if (dragOverFlagLabel !== flag.label) {
+                            setDragOverFlagLabel(flag.label);
+                          }
+                        }}
+                        onDragLeave={() => {
+                          if (dragOverFlagLabel === flag.label) {
+                            setDragOverFlagLabel(null);
+                          }
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          const droppedLabel = event.dataTransfer.getData('text/plain');
+                          handleFlagDrop(flag.label, droppedLabel || undefined);
+                        }}
+                        onDragEnd={() => {
+                          setDraggingFlagLabel(null);
+                          setDragOverFlagLabel(null);
+                        }}
+                        className={`flex items-center justify-between gap-3 rounded-lg border p-3 ${
+                          dragOverFlagLabel === flag.label ? 'border-blue-300 bg-blue-50' : 'border-gray-200'
+                        }`}
+                      >
                         <div className="flex items-center gap-2">
-                          <Button type="button" size="sm" variant="outline" onClick={() => handleEditCustomClinicalFlag(flag)}>
+                          <span className="cursor-grab text-gray-400" aria-hidden>
+                            ⋮⋮
+                          </span>
+                          <p className="text-sm text-gray-800">{flag.icon} {flag.label}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button type="button" size="sm" variant="outline" onClick={() => handleEditFlag(flag)}>
                             Breyta
                           </Button>
-                          <Button type="button" size="sm" variant="secondary" onClick={() => handleRemoveCustomClinicalFlag(flag)}>
+                          <Button type="button" size="sm" variant="secondary" onClick={() => handleRemoveFlag(flag)}>
                             Fjarlægja
                           </Button>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
+                  ))}
+                </div>
+                {customFlags.length > 0 ? (
+                  <p className="text-xs text-gray-500">Dragðu flögg upp eða niður til að breyta röðun.</p>
+                ) : null}
 
-                {clinicalError ? (
+                {flagError ? (
                   <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                    {clinicalError}
+                    {flagError}
                   </div>
                 ) : null}
 
-                {clinicalSuccess ? (
+                {flagSuccess ? (
                   <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-                    {clinicalSuccess}
+                    {flagSuccess}
                   </div>
                 ) : null}
 
                 <div className="flex justify-end">
-                  <Button onClick={handleSaveClinicalFlags} disabled={!canSaveClinical}>
-                    {savingClinical ? 'Vista...' : 'Vista sérflögg'}
+                  <Button onClick={handleSaveFlags} disabled={!canSaveFlags}>
+                    {savingFlags ? 'Vista...' : 'Vista flögg'}
                   </Button>
                 </div>
               </div>

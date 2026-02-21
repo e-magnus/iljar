@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
             client: {
               ...appointment.client,
               clinicalFlags: (appointment.client as { clinicalFlags?: string[] }).clinicalFlags ?? [],
+              customClinicalFlags: (appointment.client as { customClinicalFlags?: string[] }).customClinicalFlags ?? [],
             },
           }
         : null;
@@ -101,6 +102,7 @@ export async function GET(request: NextRequest) {
       client: {
         ...appointment.client,
         clinicalFlags: (appointment.client as { clinicalFlags?: string[] }).clinicalFlags ?? [],
+        customClinicalFlags: (appointment.client as { customClinicalFlags?: string[] }).customClinicalFlags ?? [],
       },
     }));
 

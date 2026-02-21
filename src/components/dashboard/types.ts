@@ -12,6 +12,7 @@ export interface DashboardClient {
   phone: string;
   contactPhone?: string | null;
   clinicalFlags?: DashboardClinicalFlag[];
+  customClinicalFlags?: string[];
 }
 
 export interface DashboardAppointment {

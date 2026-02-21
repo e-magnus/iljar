@@ -11,6 +11,17 @@ interface AvailableSlot {
   end: string;
 }
 
+interface SettingsFlag {
+  label: string;
+  icon: string;
+}
+
+interface SettingsFlagsResponse {
+  clinical?: {
+    customFlags?: SettingsFlag[];
+  };
+}
+
 interface TodayTimelineProps {
   selectedDate: string;
   appointments: DashboardAppointment[];
@@ -18,7 +29,9 @@ interface TodayTimelineProps {
   onNextDay: () => void;
 }
 
-const clinicalFlagMeta: Record<DashboardClinicalFlag, { label: string; icon: string }> = {
+const FLAGS_CONFIG_MARKER = '__FLAGS_CONFIGURED_V1__';
+
+const defaultClinicalFlagMeta: Record<DashboardClinicalFlag, { label: string; icon: string }> = {
   ANTICOAGULANT: { label: 'Blóðþynning', icon: '🩸' },
   DIABETES: { label: 'Sykursýki', icon: '🧪' },
   ALLERGY: { label: 'Ofnæmi', icon: '⚠️' },
@@ -26,6 +39,39 @@ const clinicalFlagMeta: Record<DashboardClinicalFlag, { label: string; icon: str
   PACEMAKER: { label: 'Gangráður', icon: '❤️' },
   OTHER: { label: 'Annað', icon: 'ℹ️' },
 };
+
+function normalizeLabel(value: string): string {
+  return value.trim().toLocaleLowerCase('is');
+}
+
+function resolveClinicalFlagMetaFromSettings(input: SettingsFlag[]): Record<DashboardClinicalFlag, { label: string; icon: string }> {
+  const cleaned = input.filter((flag) => flag.label !== FLAGS_CONFIG_MARKER);
+  if (cleaned.length === 0) {
+    return defaultClinicalFlagMeta;
+  }
+
+  const next = { ...defaultClinicalFlagMeta };
+  const assigned = new Set<DashboardClinicalFlag>();
+  const entries = Object.entries(defaultClinicalFlagMeta) as Array<[DashboardClinicalFlag, { label: string; icon: string }]>;
+
+  for (const flag of cleaned) {
+    const normalized = normalizeLabel(flag.label);
+    const byLabel = entries.find(([key, meta]) => !assigned.has(key) && normalizeLabel(meta.label) === normalized);
+    if (byLabel) {
+      next[byLabel[0]] = { label: flag.label, icon: flag.icon };
+      assigned.add(byLabel[0]);
+      continue;
+    }
+
+    const byIcon = entries.find(([key, meta]) => !assigned.has(key) && meta.icon === flag.icon);
+    if (byIcon) {
+      next[byIcon[0]] = { label: flag.label, icon: flag.icon };
+      assigned.add(byIcon[0]);
+    }
+  }
+
+  return next;
+}
 
 function formatTime(dateString: string): string {
   return formatTimeHHMM(dateString);
@@ -60,6 +106,8 @@ function isToday(dateIso: string): boolean {
 export function TodayTimeline({ selectedDate, appointments, onPreviousDay, onNextDay }: TodayTimelineProps) {
   const [availableSlots, setAvailableSlots] = useState<AvailableSlot[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const [clinicalFlagMeta, setClinicalFlagMeta] = useState(defaultClinicalFlagMeta);
+  const [customFlagIconByLabel, setCustomFlagIconByLabel] = useState<Record<string, string>>({});
 
   useEffect(() => {
     async function fetchSlots() {
@@ -83,6 +131,33 @@ export function TodayTimeline({ selectedDate, appointments, onPreviousDay, onNex
 
     fetchSlots();
   }, [selectedDate]);
+
+  useEffect(() => {
+    async function fetchFlagMeta() {
+      try {
+        const res = await authFetch('/api/settings');
+        if (!res.ok) {
+          return;
+        }
+
+        const data = (await res.json()) as SettingsFlagsResponse;
+        const settingsFlags = data.clinical?.customFlags ?? [];
+        setClinicalFlagMeta(resolveClinicalFlagMetaFromSettings(settingsFlags));
+        const iconMap = settingsFlags
+          .filter((flag) => flag.label !== FLAGS_CONFIG_MARKER)
+          .reduce<Record<string, string>>((accumulator, flag) => {
+            accumulator[normalizeLabel(flag.label)] = flag.icon;
+            return accumulator;
+          }, {});
+        setCustomFlagIconByLabel(iconMap);
+      } catch {
+        setClinicalFlagMeta(defaultClinicalFlagMeta);
+        setCustomFlagIconByLabel({});
+      }
+    }
+
+    fetchFlagMeta();
+  }, []);
 
   return (
     <Card>
@@ -110,24 +185,35 @@ export function TodayTimeline({ selectedDate, appointments, onPreviousDay, onNex
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-semibold text-gray-900">{appointment.client.name}</p>
-                        {appointment.client.clinicalFlags && appointment.client.clinicalFlags.length > 0 ? (
+                        {((appointment.client.clinicalFlags?.length ?? 0) > 0 || (appointment.client.customClinicalFlags?.length ?? 0) > 0) ? (
                           <div className="mt-1 flex flex-wrap items-center gap-1">
-                            {appointment.client.clinicalFlags.slice(0, 4).map((flag) => (
+                            {[
+                              ...(appointment.client.clinicalFlags ?? []).map((flag) => ({
+                                key: `clinical-${flag}`,
+                                label: clinicalFlagMeta[flag].label,
+                                icon: clinicalFlagMeta[flag].icon,
+                              })),
+                              ...(appointment.client.customClinicalFlags ?? []).map((label) => ({
+                                key: `custom-${label}`,
+                                label,
+                                icon: customFlagIconByLabel[normalizeLabel(label)] ?? 'ℹ️',
+                              })),
+                            ].slice(0, 4).map((flag) => (
                               <span
-                                key={`${appointment.id}-${flag}`}
-                                title={clinicalFlagMeta[flag].label}
-                                aria-label={clinicalFlagMeta[flag].label}
+                                key={`${appointment.id}-${flag.key}`}
+                                title={`${flag.icon} ${flag.label}`}
+                                aria-label={`${flag.icon} ${flag.label}`}
                                 className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-gray-300 bg-gray-50 text-[10px]"
                               >
-                                {clinicalFlagMeta[flag].icon}
+                                {flag.icon}
                               </span>
                             ))}
-                            {appointment.client.clinicalFlags.length > 4 ? (
+                            {((appointment.client.clinicalFlags?.length ?? 0) + (appointment.client.customClinicalFlags?.length ?? 0)) > 4 ? (
                               <span
                                 className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-gray-300 bg-white px-1 text-[10px] text-gray-600"
-                                title={`Aðrir áhættuþættir: ${appointment.client.clinicalFlags.length - 4}`}
+                                title={`Aðrir áhættuþættir: ${(appointment.client.clinicalFlags?.length ?? 0) + (appointment.client.customClinicalFlags?.length ?? 0) - 4}`}
                               >
-                                +{appointment.client.clinicalFlags.length - 4}
+                                +{(appointment.client.clinicalFlags?.length ?? 0) + (appointment.client.customClinicalFlags?.length ?? 0) - 4}
                               </span>
                             ) : null}
                           </div>

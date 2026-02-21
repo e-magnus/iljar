@@ -2,12 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { requireAuth } from '@/lib/auth/guard';
 
-const DEFAULT_SERVICES = [
-  { name: 'Full fótaaðgerð', durationMinutes: 60 },
-  { name: 'Fótaaðgerð', durationMinutes: 30 },
-  { name: 'Smáaðgerð', durationMinutes: 15 },
-];
-
 function normalizeName(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -23,23 +17,13 @@ export async function GET(request: NextRequest) {
       return auth.response;
     }
 
-    const servicesCount = await prisma.service.count();
-    if (servicesCount === 0) {
-      await prisma.service.createMany({
-        data: DEFAULT_SERVICES.map((service) => ({
-          ...service,
-          isDefault: true,
-        })),
-        skipDuplicates: true,
-      });
-    }
-
     const services = await prisma.service.findMany({
-      orderBy: [{ durationMinutes: 'asc' }, { name: 'asc' }],
+      orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }],
       select: {
         id: true,
         name: true,
         durationMinutes: true,
+        displayOrder: true,
         isDefault: true,
       },
     });
@@ -87,16 +71,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Service name already exists' }, { status: 409 });
     }
 
+    const lastService = await prisma.service.findFirst({
+      orderBy: { displayOrder: 'desc' },
+      select: { displayOrder: true },
+    });
+    const nextDisplayOrder = (lastService?.displayOrder ?? -1) + 1;
+
     const service = await prisma.service.create({
       data: {
         name,
         durationMinutes,
+        displayOrder: nextDisplayOrder,
         isDefault: false,
       },
       select: {
         id: true,
         name: true,
         durationMinutes: true,
+        displayOrder: true,
         isDefault: true,
       },
     });
@@ -104,6 +96,63 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ service }, { status: 201 });
   } catch (error) {
     console.error('Create service error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const auth = requireAuth(request);
+    if (!auth.ok) {
+      return auth.response;
+    }
+
+    const body = await request.json();
+    const orderedIds = body?.orderedIds;
+
+    if (!Array.isArray(orderedIds) || orderedIds.length === 0 || !orderedIds.every((id) => typeof id === 'string')) {
+      return NextResponse.json({ error: 'orderedIds must be a non-empty string array' }, { status: 400 });
+    }
+
+    const uniqueIds = new Set(orderedIds);
+    if (uniqueIds.size !== orderedIds.length) {
+      return NextResponse.json({ error: 'orderedIds must not contain duplicates' }, { status: 400 });
+    }
+
+    const existing = await prisma.service.findMany({
+      where: {
+        id: { in: orderedIds },
+      },
+      select: { id: true },
+    });
+
+    if (existing.length !== orderedIds.length) {
+      return NextResponse.json({ error: 'One or more services were not found' }, { status: 404 });
+    }
+
+    await prisma.$transaction(
+      orderedIds.map((id, index) =>
+        prisma.service.update({
+          where: { id },
+          data: { displayOrder: index },
+        })
+      )
+    );
+
+    const services = await prisma.service.findMany({
+      orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        durationMinutes: true,
+        displayOrder: true,
+        isDefault: true,
+      },
+    });
+
+    return NextResponse.json({ services });
+  } catch (error) {
+    console.error('Reorder services error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

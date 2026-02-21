@@ -36,4 +36,7 @@ echo "Postgres tilbúið á localhost:$DB_PORT"
 echo "Keyri migrations..."
 npx prisma migrate deploy
 
+echo "Endurnýja Prisma client..."
+npx prisma generate
+
 echo "Búið: DB online + migrations keyrðar"

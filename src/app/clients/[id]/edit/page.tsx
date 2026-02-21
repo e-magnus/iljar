@@ -9,17 +9,22 @@ import { authFetch } from '@/lib/api/client';
 
 type ClinicalFlag = 'ANTICOAGULANT' | 'DIABETES' | 'ALLERGY' | 'NEUROPATHY' | 'PACEMAKER' | 'OTHER';
 
-const clinicalFlagOptions: Array<{ value: Exclude<ClinicalFlag, 'PACEMAKER'>; label: string; icon: string }> = [
-  { value: 'ANTICOAGULANT', label: 'Blóðþynning', icon: '🩸' },
-  { value: 'DIABETES', label: 'Sykursýki', icon: '🧪' },
-  { value: 'ALLERGY', label: 'Ofnæmi', icon: '⚠️' },
-  { value: 'NEUROPATHY', label: 'Taugakvilli', icon: '🦶' },
-  { value: 'OTHER', label: 'Annað', icon: 'ℹ️' },
-];
+const clinicalFlagMeta: Record<ClinicalFlag, { label: string; icon: string }> = {
+  ANTICOAGULANT: { label: 'Blóðþynning', icon: '🩸' },
+  DIABETES: { label: 'Sykursýki', icon: '🧪' },
+  ALLERGY: { label: 'Ofnæmi', icon: '⚠️' },
+  NEUROPATHY: { label: 'Taugakvilli', icon: '🦶' },
+  PACEMAKER: { label: 'Gangráður', icon: '❤️' },
+  OTHER: { label: 'Annað', icon: 'ℹ️' },
+};
 
 interface CustomClinicalFlagOption {
   label: string;
   icon: string;
+}
+
+function normalizeFlagLabel(value: string): string {
+  return value.trim().toLocaleLowerCase('is');
 }
 
 function parseCustomFlagOptions(input: unknown): CustomClinicalFlagOption[] {
@@ -46,7 +51,7 @@ function parseCustomFlagOptions(input: unknown): CustomClinicalFlagOption[] {
     });
   }
 
-  return parsed.sort((a, b) => a.label.localeCompare(b.label, 'is'));
+  return parsed.filter((item) => item.label !== '__FLAGS_CONFIGURED_V1__');
 }
 
 export default function EditClientPage() {
@@ -58,8 +63,9 @@ export default function EditClientPage() {
   const [phone, setPhone] = useState('');
   const [kennitala, setKennitala] = useState('');
   const [clinicalFlags, setClinicalFlags] = useState<ClinicalFlag[]>([]);
-  const [customClinicalFlags, setCustomClinicalFlags] = useState<CustomClinicalFlagOption[]>([]);
-  const [selectedCustomClinicalFlags, setSelectedCustomClinicalFlags] = useState<string[]>([]);
+  const [availableFlags, setAvailableFlags] = useState<CustomClinicalFlagOption[]>([]);
+  const [selectedFlags, setSelectedFlags] = useState<string[]>([]);
+  const [flagClinicalMap, setFlagClinicalMap] = useState<Record<string, ClinicalFlag | null>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notFound, setNotFound] = useState(false);
@@ -92,15 +98,51 @@ export default function EditClientPage() {
         setName(data.client?.name ?? '');
         setPhone(data.client?.phone ?? '');
         setKennitala(data.client?.kennitala ?? '');
-        setClinicalFlags(((data.client?.clinicalFlags ?? []) as ClinicalFlag[]).filter((flag) => flag !== 'PACEMAKER'));
+        const clientClinicalFlags = (data.client?.clinicalFlags ?? []) as ClinicalFlag[];
+        setClinicalFlags(clientClinicalFlags);
+
         const availableCustomFlags = parseCustomFlagOptions(settingsData?.clinical?.customFlags);
-        const clientCustomFlags = [...(data.client?.customClinicalFlags ?? [])].sort((a: string, b: string) => a.localeCompare(b, 'is'));
-        const mergedCustomFlags = Array.from(new Map(
-          [...availableCustomFlags, ...clientCustomFlags.map((label: string) => ({ label, icon: 'ℹ️' }))]
-            .map((flag) => [flag.label.toLocaleLowerCase('is'), flag])
-        ).values()).sort((a, b) => a.label.localeCompare(b.label, 'is'));
-        setCustomClinicalFlags(mergedCustomFlags);
-        setSelectedCustomClinicalFlags(clientCustomFlags);
+        const clientCustomFlags = [...(data.client?.customClinicalFlags ?? [])];
+
+        const clinicalByIcon = new Map<string, ClinicalFlag>(
+          (Object.keys(clinicalFlagMeta) as ClinicalFlag[]).map((key) => [clinicalFlagMeta[key].icon, key])
+        );
+        const clinicalByLabel = new Map<string, ClinicalFlag>(
+          (Object.keys(clinicalFlagMeta) as ClinicalFlag[]).map((key) => [normalizeFlagLabel(clinicalFlagMeta[key].label), key])
+        );
+
+        const optionMap: Record<string, ClinicalFlag | null> = {};
+        for (const option of availableCustomFlags) {
+          const normalized = normalizeFlagLabel(option.label);
+          optionMap[normalized] = clinicalByLabel.get(normalized) ?? clinicalByIcon.get(option.icon) ?? null;
+        }
+
+        const selectedClinicalOptions = clientClinicalFlags.map((flag) => {
+          const match = availableCustomFlags.find((option) => optionMap[normalizeFlagLabel(option.label)] === flag);
+          return {
+            label: match?.label ?? clinicalFlagMeta[flag].label,
+            icon: match?.icon ?? clinicalFlagMeta[flag].icon,
+          };
+        });
+        const selectedClinicalLabels = selectedClinicalOptions.map((option) => option.label);
+
+        const mergedFlags = Array.from(new Map(
+          [
+            ...availableCustomFlags,
+            ...selectedClinicalOptions,
+            ...clientCustomFlags.map((label: string) => ({ label, icon: 'ℹ️' })),
+          ].map((flag) => [normalizeFlagLabel(flag.label), flag])
+        ).values());
+
+        const mergedOptionMap: Record<string, ClinicalFlag | null> = {};
+        for (const option of mergedFlags) {
+          const normalized = normalizeFlagLabel(option.label);
+          mergedOptionMap[normalized] = clinicalByLabel.get(normalized) ?? clinicalByIcon.get(option.icon) ?? null;
+        }
+
+        setAvailableFlags(mergedFlags);
+        setFlagClinicalMap(mergedOptionMap);
+        setSelectedFlags(Array.from(new Set([...selectedClinicalLabels, ...clientCustomFlags])));
       } catch (fetchError) {
         console.error('Error fetching client:', fetchError);
         setError('Villa kom upp við að sækja skjólstæðing');
@@ -114,20 +156,23 @@ export default function EditClientPage() {
     }
   }, [clientId]);
 
-  const toggleFlag = (flag: Exclude<ClinicalFlag, 'PACEMAKER'>) => {
-    setClinicalFlags((previous) => (
-      previous.includes(flag)
-        ? previous.filter((value) => value !== flag)
-        : [...previous, flag]
-    ));
-  };
+  const toggleFlag = (label: string) => {
+    const normalized = normalizeFlagLabel(label);
+    const mappedClinicalFlag = flagClinicalMap[normalized] ?? null;
 
-  const toggleCustomFlag = (flag: string) => {
-    setSelectedCustomClinicalFlags((previous) => (
-      previous.includes(flag)
-        ? previous.filter((value) => value !== flag)
-        : [...previous, flag]
+    setSelectedFlags((previous) => (
+      previous.includes(label)
+        ? previous.filter((value) => value !== label)
+        : [...previous, label]
     ));
+
+    if (mappedClinicalFlag) {
+      setClinicalFlags((previous) => (
+        previous.includes(mappedClinicalFlag)
+          ? previous.filter((value) => value !== mappedClinicalFlag)
+          : [...previous, mappedClinicalFlag]
+      ));
+    }
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -142,6 +187,11 @@ export default function EditClientPage() {
     setSaving(true);
 
     try {
+      const selectedCustomFlags = selectedFlags.filter((label) => {
+        const mappedClinicalFlag = flagClinicalMap[normalizeFlagLabel(label)] ?? null;
+        return mappedClinicalFlag === null;
+      });
+
       const response = await authFetch(`/api/clients/${clientId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -150,7 +200,7 @@ export default function EditClientPage() {
           phone: phone.trim(),
           kennitala: kennitala.trim() || null,
           clinicalFlags,
-          customClinicalFlags: selectedCustomClinicalFlags,
+          customClinicalFlags: selectedCustomFlags,
         }),
       });
 
@@ -214,35 +264,19 @@ export default function EditClientPage() {
                 <div className="rounded-lg border border-gray-200 bg-white p-3">
                   <p className="text-sm font-medium text-gray-800">Flögg</p>
 
-                  <div className="mt-3 space-y-2">
-                    {clinicalFlagOptions.map((option) => {
-                      const isSelected = clinicalFlags.includes(option.value);
-
-                      return (
-                        <label key={option.value} className="flex items-center gap-2 text-sm text-gray-700">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => toggleFlag(option.value)}
-                            className="h-4 w-4 rounded border-gray-300"
-                          />
-                          <span>{option.icon} {option.label}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-
-                  {customClinicalFlags.length > 0 ? (
-                    <div className="mt-3 border-t border-gray-200 pt-3 space-y-2">
-                      {customClinicalFlags.map((flag) => {
-                        const isSelected = selectedCustomClinicalFlags.includes(flag.label);
+                  {availableFlags.length === 0 ? (
+                    <p className="mt-3 text-sm text-gray-600">Engin flögg í stillingum.</p>
+                  ) : (
+                    <div className="mt-3 space-y-2">
+                      {availableFlags.map((flag) => {
+                        const isSelected = selectedFlags.includes(flag.label);
 
                         return (
                           <label key={flag.label} className="flex items-center gap-2 text-sm text-gray-700">
                             <input
                               type="checkbox"
                               checked={isSelected}
-                              onChange={() => toggleCustomFlag(flag.label)}
+                              onChange={() => toggleFlag(flag.label)}
                               className="h-4 w-4 rounded border-gray-300"
                             />
                             <span>{flag.icon} {flag.label}</span>
@@ -250,7 +284,7 @@ export default function EditClientPage() {
                         );
                       })}
                     </div>
-                  ) : null}
+                  )}
                 </div>
 
                 {error ? <p className="text-sm text-red-600">{error}</p> : null}

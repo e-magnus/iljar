@@ -97,7 +97,7 @@ function normalizeCustomFlags(input: CustomClinicalFlag[]): CustomClinicalFlag[]
     }
   }
 
-  return Array.from(deduped.values()).sort((a, b) => a.label.localeCompare(b.label, 'is'));
+  return Array.from(deduped.values());
 }
 
 function validateCustomFlagsInput(customFlags: unknown) {

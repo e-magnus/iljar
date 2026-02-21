@@ -28,15 +28,11 @@ export async function PATCH(request: NextRequest, context: RouteParams) {
 
     const existing = await prisma.service.findUnique({
       where: { id },
-      select: { id: true, isDefault: true },
+      select: { id: true },
     });
 
     if (!existing) {
       return NextResponse.json({ error: 'Service not found' }, { status: 404 });
-    }
-
-    if (existing.isDefault) {
-      return NextResponse.json({ error: 'Default services cannot be edited' }, { status: 403 });
     }
 
     const body = await request.json();
@@ -79,6 +75,7 @@ export async function PATCH(request: NextRequest, context: RouteParams) {
         id: true,
         name: true,
         durationMinutes: true,
+        displayOrder: true,
         isDefault: true,
       },
     });
@@ -104,15 +101,11 @@ export async function DELETE(request: NextRequest, context: RouteParams) {
 
     const existing = await prisma.service.findUnique({
       where: { id },
-      select: { id: true, isDefault: true },
+      select: { id: true },
     });
 
     if (!existing) {
       return NextResponse.json({ error: 'Service not found' }, { status: 404 });
-    }
-
-    if (existing.isDefault) {
-      return NextResponse.json({ error: 'Default services cannot be deleted' }, { status: 403 });
     }
 
     await prisma.service.delete({

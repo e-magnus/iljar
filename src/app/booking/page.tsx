@@ -23,6 +23,7 @@ interface Service {
   id: string;
   name: string;
   durationMinutes: number;
+  displayOrder: number;
   isDefault: boolean;
 }
 
@@ -431,7 +432,7 @@ export default function BookingPage() {
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Progress Steps */}
-        <div className="mb-8">
+        <div className="sticky top-0 z-20 -mx-4 mb-8 border-b border-gray-200 bg-gray-50 px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
           <div className="flex items-center justify-between">
             {[1, 2, 3, 4].map((s) => (
               <div key={s} className="flex items-center">
@@ -537,12 +538,6 @@ export default function BookingPage() {
                       {weekday}
                     </div>
                   ))}
-                </div>
-
-                <div className="mb-2 mt-2 flex flex-wrap gap-2 text-[11px] text-gray-600">
-                  <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-rose-400" />Lágt</span>
-                  <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-400" />Miðlungs</span>
-                  <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-400" />Mikið</span>
                 </div>
 
                 {loadingDayAvailability ? (
