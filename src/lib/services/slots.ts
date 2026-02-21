@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db/prisma';
+import { isIcelandicPublicHoliday } from '@/lib/services/icelandicHolidays';
 
 export interface TimeSlot {
   start: Date;
@@ -20,12 +21,16 @@ export interface SlotGeneratorOptions {
  * - Buffer time between appointments
  */
 export async function generateSlots(options: SlotGeneratorOptions): Promise<TimeSlot[]> {
-  const { date, slotLength = 30, bufferTime = 5 } = options;
+  const { date, slotLength, bufferTime } = options;
 
   // Get settings from database if not provided
   const settings = await prisma.settings.findFirst();
-  const actualSlotLength = settings?.slotLength || slotLength;
-  const actualBufferTime = settings?.bufferTime || bufferTime;
+  const actualSlotLength = slotLength ?? settings?.slotLength ?? 30;
+  const actualBufferTime = bufferTime ?? settings?.bufferTime ?? 5;
+
+  if (settings?.blockRedDays && isIcelandicPublicHoliday(date)) {
+    return [];
+  }
 
   // Get day of week (0 = Sunday, 6 = Saturday)
   const weekday = date.getDay();

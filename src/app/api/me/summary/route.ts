@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
 
     const plus48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
 
-    const [currentUser, nextAppointment, todayCount, unconfirmed48hCount, noShowToday, weekBooked, weekNoShow, settings, availabilityCount] =
+    const [currentUser, nextAppointment, todayCount, unconfirmed48hCount, noShowToday, weekBooked, weekNoShow, servicesCount, availabilityCount] =
       await Promise.all([
         prisma.user.findUnique({
           where: { id: auth.payload.userId },
@@ -88,9 +88,7 @@ export async function GET(request: NextRequest) {
             status: 'NO_SHOW',
           },
         }),
-        prisma.settings.findFirst({
-          select: { id: true },
-        }),
+        prisma.service.count(),
         prisma.availabilityRule.count(),
       ]);
 
@@ -114,7 +112,7 @@ export async function GET(request: NextRequest) {
     }).length;
 
     const remindersConfigured = Boolean(process.env.REMINDER_PROVIDER || process.env.SMS_PROVIDER || process.env.EMAIL_PROVIDER);
-    const servicesConfigured = Boolean(settings);
+    const servicesConfigured = servicesCount > 0;
     const openingHoursConfigured = availabilityCount > 0;
 
     const setupChecklist = {

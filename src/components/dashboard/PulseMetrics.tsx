@@ -11,10 +11,17 @@ interface PulseMetricsProps {
 }
 
 export function PulseMetrics({ weekLabel, weekBooked, weekNoShow, weekFreeSlots, onPreviousWeek, onNextWeek }: PulseMetricsProps) {
+  const match = weekLabel.match(/^(.*)\s\((.*)\)$/);
+  const labelText = match ? match[1] : weekLabel;
+  const rangeText = match ? match[2] : '';
+
   return (
     <Card>
       <CardHeader className="py-3">
-        <CardTitle>{weekLabel}</CardTitle>
+        <CardTitle className="text-center md:text-left leading-tight">
+          <span className="block">{labelText}</span>
+          {rangeText ? <span className="mt-1 block">{rangeText}</span> : null}
+        </CardTitle>
       </CardHeader>
       <CardContent className="py-3">
         <div className="flex items-center overflow-hidden rounded-lg border border-gray-200 bg-gray-50">

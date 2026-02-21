@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { DashboardAppointment, DashboardClinicalFlag } from '@/components/dashboard/types';
 import { authFetch } from '@/lib/api/client';
+import { formatIcelandicDayLabel, formatTimeHHMM } from '@/lib/format/date';
 
 interface AvailableSlot {
   start: string;
@@ -27,20 +28,25 @@ const clinicalFlagMeta: Record<DashboardClinicalFlag, { label: string; icon: str
 };
 
 function formatTime(dateString: string): string {
-  return new Intl.DateTimeFormat('is-IS', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(new Date(dateString));
+  return formatTimeHHMM(dateString);
 }
 
 function formatDayLabel(dateIso: string): string {
-  const date = new Date(`${dateIso}T00:00:00`);
-  return new Intl.DateTimeFormat('is-IS', {
-    weekday: 'long',
-    day: '2-digit',
-    month: '2-digit',
-  }).format(date);
+  return formatIcelandicDayLabel(`${dateIso}T00:00:00`);
+}
+
+function formatBookedService(appointment: DashboardAppointment): string {
+  const serviceName = appointment.type ?? 'Almenn meðferð';
+  const durationMinutes = Math.max(
+    0,
+    Math.round((new Date(appointment.endTime).getTime() - new Date(appointment.startTime).getTime()) / 60000)
+  );
+
+  if (durationMinutes <= 0) {
+    return serviceName;
+  }
+
+  return `${serviceName} (${durationMinutes} mín)`;
 }
 
 function isToday(dateIso: string): boolean {
@@ -126,7 +132,7 @@ export function TodayTimeline({ selectedDate, appointments, onPreviousDay, onNex
                             ) : null}
                           </div>
                         ) : null}
-                        <p className="text-sm text-gray-600">Tegund komu: {appointment.type ?? 'Almenn meðferð'}</p>
+                        <p className="text-sm text-gray-600">{formatBookedService(appointment)}</p>
                         <p className="text-xs text-gray-600">Sími: {appointment.client.phone}</p>
                         {appointment.client.contactPhone ? (
                           <p className="text-xs text-gray-600">Tengiliður: {appointment.client.contactPhone}</p>

@@ -42,7 +42,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     const { id } = await context.params;
     const body = await request.json();
-    const { name, phone, kennitala, clinicalFlags, contactNote } = body;
+    const { name, phone, kennitala, clinicalFlags, customClinicalFlags, contactNote } = body;
 
     const validClinicalFlags = ['ANTICOAGULANT', 'DIABETES', 'ALLERGY', 'NEUROPATHY', 'PACEMAKER', 'OTHER'] as const;
 
@@ -50,6 +50,15 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       if (!Array.isArray(clinicalFlags) || !clinicalFlags.every((flag) => validClinicalFlags.includes(flag))) {
         return NextResponse.json(
           { error: 'clinicalFlags contains invalid values' },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (customClinicalFlags !== undefined) {
+      if (!Array.isArray(customClinicalFlags) || !customClinicalFlags.every((flag) => typeof flag === 'string')) {
+        return NextResponse.json(
+          { error: 'customClinicalFlags must be an array of strings' },
           { status: 400 }
         );
       }
@@ -69,6 +78,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       phone?: string;
       kennitala?: string | null;
       clinicalFlags?: Array<(typeof validClinicalFlags)[number]>;
+      customClinicalFlags?: string[];
       contactNote?: string | null;
     } = {};
 
@@ -86,6 +96,19 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     if (clinicalFlags !== undefined) {
       updateData.clinicalFlags = clinicalFlags;
+    }
+
+    if (customClinicalFlags !== undefined) {
+      const normalized: string[] = Array.from(
+        new Map<string, string>(
+          customClinicalFlags
+            .map((flag: string) => flag.trim().replace(/\s+/g, ' '))
+            .filter((flag: string) => flag.length > 0)
+            .map((flag: string) => [flag.toLocaleLowerCase('is'), flag])
+        ).values()
+      );
+
+      updateData.customClinicalFlags = normalized;
     }
 
     if (contactNote !== undefined) {

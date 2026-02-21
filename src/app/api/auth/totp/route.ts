@@ -97,3 +97,58 @@ export async function PATCH(request: NextRequest) {
     );
   }
 }
+
+// Disable TOTP after verification
+export async function DELETE(request: NextRequest) {
+  try {
+    const auth = requireAuth(request);
+    if (!auth.ok) {
+      return auth.response;
+    }
+
+    const body = await request.json();
+    const { totpToken } = body;
+
+    if (!totpToken) {
+      return NextResponse.json(
+        { error: 'TOTP token required' },
+        { status: 400 }
+      );
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: auth.payload.userId },
+    });
+
+    if (!user || !user.totpEnabled || !user.totpSecret) {
+      return NextResponse.json(
+        { error: 'TOTP is not enabled' },
+        { status: 400 }
+      );
+    }
+
+    const isValid = verifyTOTP(totpToken, user.totpSecret);
+    if (!isValid) {
+      return NextResponse.json(
+        { error: 'Invalid TOTP token' },
+        { status: 401 }
+      );
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        totpEnabled: false,
+        totpSecret: null,
+      },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('TOTP disable error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}

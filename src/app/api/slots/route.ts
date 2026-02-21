@@ -12,6 +12,20 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const dateParam = searchParams.get('date');
     const nextOnly = searchParams.get('next') === 'true';
+    const slotLengthParam = searchParams.get('slotLength');
+
+    let slotLength: number | undefined;
+    if (slotLengthParam !== null) {
+      const parsed = Number.parseInt(slotLengthParam, 10);
+      if (!Number.isInteger(parsed) || parsed < 5 || parsed > 240) {
+        return NextResponse.json(
+          { error: 'slotLength must be an integer between 5 and 240' },
+          { status: 400 }
+        );
+      }
+
+      slotLength = parsed;
+    }
 
     if (nextOnly) {
       // Find next available slot
@@ -42,7 +56,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const slots = await generateSlots({ date });
+    const slots = await generateSlots({ date, slotLength });
 
     return NextResponse.json({ slots });
   } catch (error) {

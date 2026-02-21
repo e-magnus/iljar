@@ -8,6 +8,25 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
+async function assertNoActiveAppointmentOverlaps() {
+  const overlaps = await prisma.$queryRaw<Array<{ id_a: string; id_b: string }>>`
+    SELECT a."id" AS id_a, b."id" AS id_b
+    FROM "Appointment" a
+    JOIN "Appointment" b
+      ON a."id" < b."id"
+     AND a."status" <> 'CANCELLED'::"AppointmentStatus"
+     AND b."status" <> 'CANCELLED'::"AppointmentStatus"
+     AND a."startTime" < b."endTime"
+     AND a."endTime" > b."startTime"
+    LIMIT 20
+  `;
+
+  if (overlaps.length > 0) {
+    const sample = overlaps.map((row) => `${row.id_a}<>${row.id_b}`).join(', ');
+    throw new Error(`Seed generated overlapping active appointments: ${sample}`);
+  }
+}
+
 async function main() {
   console.log('🌱 Starting seed...');
 
@@ -32,9 +51,35 @@ async function main() {
       id: 'default',
       slotLength: 30,
       bufferTime: 5,
+      blockRedDays: false,
     },
   });
   console.log('✓ Created settings');
+
+  await prisma.service.createMany({
+    data: [
+      { name: 'Full fótaaðgerð', durationMinutes: 60, isDefault: true },
+      { name: 'Fótaaðgerð', durationMinutes: 30, isDefault: true },
+      { name: 'Smáaðgerð', durationMinutes: 15, isDefault: true },
+    ],
+    skipDuplicates: true,
+  });
+
+  await prisma.service.updateMany({
+    where: { name: 'Full fótaaðgerð' },
+    data: { durationMinutes: 60, isDefault: true },
+  });
+
+  await prisma.service.updateMany({
+    where: { name: 'Fótaaðgerð' },
+    data: { durationMinutes: 30, isDefault: true },
+  });
+
+  await prisma.service.updateMany({
+    where: { name: 'Smáaðgerð' },
+    data: { durationMinutes: 15, isDefault: true },
+  });
+  console.log('✓ Created default services');
 
   await prisma.photo.deleteMany();
   await prisma.visit.deleteMany();
@@ -101,32 +146,33 @@ async function main() {
   }
   console.log(`✓ Created ${clients.length} clients`);
 
-  // Create 30 appointments over the next 2 weeks
+  // Create 30 appointments across distinct upcoming business days
   const now = new Date();
-  const appointments = [];
-  
-  for (let i = 0; i < 30; i++) {
-    const daysFromNow = Math.floor(i / 3); // 3 appointments per day
-    const appointmentDate = new Date(now);
-    appointmentDate.setDate(appointmentDate.getDate() + daysFromNow);
-    
-    // Skip weekends
-    while (appointmentDate.getDay() === 0 || appointmentDate.getDay() === 6) {
-      appointmentDate.setDate(appointmentDate.getDate() + 1);
+  now.setHours(0, 0, 0, 0);
+
+  const businessDays: Date[] = [];
+  const cursor = new Date(now);
+  while (businessDays.length < 10) {
+    if (cursor.getDay() !== 0 && cursor.getDay() !== 6) {
+      businessDays.push(new Date(cursor));
     }
-    
-    // Set time slots: 9:00, 10:00, 11:00, 13:00, 14:00, 15:00, 16:00
-    const timeSlot = i % 3;
-    const hours = timeSlot === 0 ? 9 : timeSlot === 1 ? 10 : 14;
-    appointmentDate.setHours(hours, 0, 0, 0);
-    
-    const startTime = new Date(appointmentDate);
-    const endTime = new Date(appointmentDate);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  const slotHours = [9, 10, 14]; // 3 appointments per business day
+  const appointments = [];
+
+  for (let i = 0; i < 30; i++) {
+    const day = new Date(businessDays[Math.floor(i / 3)]);
+    day.setHours(slotHours[i % 3], 0, 0, 0);
+
+    const startTime = new Date(day);
+    const endTime = new Date(day);
     endTime.setMinutes(endTime.getMinutes() + 30);
-    
+
     const clientIndex = i % clients.length;
     const status = i < 10 ? 'COMPLETED' : 'BOOKED';
-    
+
     const appointment = await prisma.appointment.create({
       data: {
         clientId: clients[clientIndex].id,
@@ -168,6 +214,9 @@ async function main() {
     });
   }
   console.log('✓ Created audit log entries');
+
+  await assertNoActiveAppointmentOverlaps();
+  console.log('✓ Verified no overlapping active appointments');
 
   console.log('✅ Seed completed successfully!');
   console.log('\nTest credentials:');

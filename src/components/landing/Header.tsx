@@ -30,7 +30,7 @@ export function Header() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <Link href="/login" onClick={onLoginClick} className="hidden sm:inline-flex">
+          <Link href="/login" onClick={onLoginClick} className="inline-flex">
             <Button variant="outline" size="sm">Innskráning</Button>
           </Link>
           <a href="#lead-form" onClick={onPrimaryClick}>

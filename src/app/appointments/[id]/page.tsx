@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/Card';
 import { authFetch } from '@/lib/api/client';
+import { formatDateTimeDDMMYYYYHHMM, formatIcelandicDayLabel, formatTimeHHMM } from '@/lib/format/date';
 
 interface Visit {
   id: string;
@@ -31,11 +32,45 @@ interface Appointment {
   visits: Visit[];
 }
 
+function formatBookedService(appointment: Pick<Appointment, 'type' | 'startTime' | 'endTime'>): string {
+  const serviceName = appointment.type ?? 'Almenn meðferð';
+  const durationMinutes = Math.max(
+    0,
+    Math.round((new Date(appointment.endTime).getTime() - new Date(appointment.startTime).getTime()) / 60000)
+  );
+
+  if (durationMinutes <= 0) {
+    return serviceName;
+  }
+
+  return `${serviceName} (${durationMinutes} mín)`;
+}
+
 export default function AppointmentDetailPage() {
   const params = useParams();
   const router = useRouter();
   const [appointment, setAppointment] = useState<Appointment | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const normalizePhone = (value: string) => value.replace(/\s+/g, '');
+
+  const buildFollowUpUrl = () => {
+    if (!appointment) {
+      return '/booking';
+    }
+
+    const start = new Date(appointment.startTime);
+    const followUp = new Date(start);
+    followUp.setDate(followUp.getDate() + 14);
+
+    const year = followUp.getFullYear();
+    const month = String(followUp.getMonth() + 1).padStart(2, '0');
+    const day = String(followUp.getDate()).padStart(2, '0');
+    const hour = String(followUp.getHours()).padStart(2, '0');
+    const minute = String(followUp.getMinutes()).padStart(2, '0');
+
+    return `/booking?clientId=${encodeURIComponent(appointment.client.id)}&date=${year}-${month}-${day}&time=${hour}:${minute}`;
+  };
 
   useEffect(() => {
     async function fetchAppointment() {
@@ -75,32 +110,15 @@ export default function AppointmentDetailPage() {
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat('is-IS', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    }).format(date);
+    return formatIcelandicDayLabel(dateString);
   };
 
   const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat('is-IS', {
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(date);
+    return formatTimeHHMM(dateString);
   };
 
   const formatDateTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat('is-IS', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(date);
+    return formatDateTimeDDMMYYYYHHMM(dateString);
   };
 
   const getStatusBadge = (status: string) => {
@@ -151,6 +169,35 @@ export default function AppointmentDetailPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <Card className="mb-6">
+          <CardContent>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Skjólstæðingur</p>
+                <p className="text-xl font-semibold text-gray-900">{appointment.client.name}</p>
+                <p className="text-gray-700">{appointment.client.phone}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <a
+                  href={`tel:${normalizePhone(appointment.client.phone)}`}
+                  className="inline-flex items-center justify-center rounded-lg border-2 border-blue-600 px-4 py-2 text-blue-600 hover:bg-blue-50"
+                >
+                  Hringja
+                </a>
+                <a
+                  href={`sms:${normalizePhone(appointment.client.phone)}`}
+                  className="inline-flex items-center justify-center rounded-lg border-2 border-blue-600 px-4 py-2 text-blue-600 hover:bg-blue-50"
+                >
+                  Senda SMS
+                </a>
+                <Button variant="outline" onClick={() => router.push(buildFollowUpUrl())}>
+                  Bóka eftirfylgni
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column */}
           <div className="lg:col-span-2 space-y-6">
@@ -173,12 +220,10 @@ export default function AppointmentDetailPage() {
                       {formatTime(appointment.startTime)} - {formatTime(appointment.endTime)}
                     </p>
                   </div>
-                  {appointment.type && (
-                    <div>
-                      <p className="text-sm text-gray-600">Tegund</p>
-                      <p className="text-lg">{appointment.type}</p>
-                    </div>
-                  )}
+                  <div>
+                    <p className="text-sm text-gray-600">Tegund</p>
+                    <p className="text-lg">{formatBookedService(appointment)}</p>
+                  </div>
                   {appointment.note && (
                     <div>
                       <p className="text-sm text-gray-600">Athugasemd</p>
@@ -268,13 +313,18 @@ export default function AppointmentDetailPage() {
                     </div>
                   )}
                   <div className="pt-4">
-                    <Button
-                      onClick={() => router.push(`/clients/${appointment.client.id}`)}
-                      variant="outline"
-                      className="w-full"
-                    >
-                      Skoða sögu
-                    </Button>
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        onClick={() => router.push(`/clients/${appointment.client.id}`)}
+                        variant="outline"
+                        className="w-full"
+                      >
+                        Skoða sögu
+                      </Button>
+                      <Button variant="outline" className="w-full" onClick={() => router.push(buildFollowUpUrl())}>
+                        Bóka eftirfylgni
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </CardContent>

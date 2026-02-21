@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { trackEvent } from '@/lib/analytics';
 import { DashboardAppointment } from '@/components/dashboard/types';
+import { formatTimeHHMM } from '@/lib/format/date';
 
 interface NextAppointmentCardProps {
   appointment: DashboardAppointment | null;
@@ -11,10 +12,7 @@ interface NextAppointmentCardProps {
 }
 
 function formatTime(dateString: string): string {
-  return new Intl.DateTimeFormat('is-IS', {
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(dateString));
+  return formatTimeHHMM(dateString);
 }
 
 function getRelativeMinutes(startTime: string): string {
@@ -31,6 +29,20 @@ function getRelativeMinutes(startTime: string): string {
 function toShortName(fullName: string): string {
   const [firstName = '', lastName = ''] = fullName.split(' ');
   return `${firstName} ${lastName.charAt(0)}.`.trim();
+}
+
+function formatBookedService(appointment: DashboardAppointment): string {
+  const serviceName = appointment.type ?? 'Almenn meðferð';
+  const durationMinutes = Math.max(
+    0,
+    Math.round((new Date(appointment.endTime).getTime() - new Date(appointment.startTime).getTime()) / 60000)
+  );
+
+  if (durationMinutes <= 0) {
+    return serviceName;
+  }
+
+  return `${serviceName} (${durationMinutes} mín)`;
 }
 
 export function NextAppointmentCard({ appointment, onMarkArrived, onOpenReschedule }: NextAppointmentCardProps) {
@@ -62,7 +74,7 @@ export function NextAppointmentCard({ appointment, onMarkArrived, onOpenReschedu
             {formatTime(appointment.startTime)} - {formatTime(appointment.endTime)}
           </p>
           <p className="text-gray-800">{toShortName(appointment.client.name)}</p>
-          <p className="text-sm text-gray-600">{appointment.type ?? 'Almenn meðferð'}</p>
+          <p className="text-sm text-gray-600">{formatBookedService(appointment)}</p>
           <p className="text-sm text-gray-600">Staða: {appointment.status}</p>
           <p className="text-sm text-gray-600">Greiðsla: Óaðgengilegt</p>
         </div>

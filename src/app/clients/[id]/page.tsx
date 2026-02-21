@@ -42,31 +42,8 @@ interface Client {
   name: string;
   phone: string;
   kennitala?: string | null;
-  clinicalFlags?: ClinicalFlag[];
   contactNote?: string | null;
 }
-
-type ClinicalFlag = 'ANTICOAGULANT' | 'DIABETES' | 'ALLERGY' | 'NEUROPATHY' | 'PACEMAKER' | 'OTHER';
-
-const clinicalFlagOptions: Array<{ value: Exclude<ClinicalFlag, 'PACEMAKER'>; label: string; icon: string }> = [
-  { value: 'ANTICOAGULANT', label: 'Blóðþynning', icon: '🩸' },
-  { value: 'DIABETES', label: 'Sykursýki', icon: '🧪' },
-  { value: 'ALLERGY', label: 'Ofnæmi', icon: '⚠️' },
-  { value: 'NEUROPATHY', label: 'Taugakvilli', icon: '🦶' },
-  { value: 'OTHER', label: 'Annað', icon: 'ℹ️' },
-];
-
-const clinicalFlagMetaByValue = clinicalFlagOptions.reduce<Record<ClinicalFlag, { label: string; icon: string }>>((accumulator, option) => {
-  accumulator[option.value] = { label: option.label, icon: option.icon };
-  return accumulator;
-}, {
-  ANTICOAGULANT: { label: 'Blóðþynning', icon: '🩸' },
-  DIABETES: { label: 'Sykursýki', icon: '🧪' },
-  ALLERGY: { label: 'Ofnæmi', icon: '⚠️' },
-  NEUROPATHY: { label: 'Taugakvilli', icon: '🦶' },
-  PACEMAKER: { label: 'Gangráður', icon: '❤️' },
-  OTHER: { label: 'Annað', icon: 'ℹ️' },
-});
 
 interface TreatmentPhoto {
   file: File;
@@ -103,12 +80,28 @@ function formatWeeksAndDays(totalDays: number) {
   return `${weeks} ${weekLabel} og ${days} ${dayLabel}`;
 }
 
+function formatBookedService(appointment: Pick<Appointment, 'type' | 'startTime' | 'endTime'>): string {
+  const serviceName = appointment.type ?? 'Almenn meðferð';
+
+  if (!appointment.endTime) {
+    return serviceName;
+  }
+
+  const durationMinutes = Math.max(
+    0,
+    Math.round((new Date(appointment.endTime).getTime() - new Date(appointment.startTime).getTime()) / 60000)
+  );
+
+  if (durationMinutes <= 0) {
+    return serviceName;
+  }
+
+  return `${serviceName} (${durationMinutes} mín)`;
+}
+
 export default function ClientDetailPage() {
   const params = useParams<{ id: string }>();
   const [client, setClient] = useState<Client | null>(null);
-  const [selectedFlags, setSelectedFlags] = useState<ClinicalFlag[]>([]);
-  const [savingFlags, setSavingFlags] = useState(false);
-  const [flagsSavedMessage, setFlagsSavedMessage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'treatment' | 'history' | 'notes'>('treatment');
   const [soapS, setSoapS] = useState('');
   const [soapO, setSoapO] = useState('');
@@ -152,7 +145,6 @@ export default function ClientDetailPage() {
 
         const fetchedClient = clientData.client ?? null;
         setClient(fetchedClient);
-        setSelectedFlags(((fetchedClient?.clinicalFlags ?? []) as ClinicalFlag[]).filter((flag) => flag !== 'PACEMAKER'));
         setMemoText(fetchedClient?.contactNote ?? '');
         setAppointments(appointmentItems);
       } catch (error) {
@@ -212,46 +204,6 @@ export default function ClientDetailPage() {
       mounted = false;
     };
   }, [activeTab, appointments]);
-
-  const toggleFlag = (flag: ClinicalFlag) => {
-    setSelectedFlags((previousFlags) =>
-      previousFlags.includes(flag)
-        ? previousFlags.filter((currentFlag) => currentFlag !== flag)
-        : [...previousFlags, flag]
-    );
-    setFlagsSavedMessage(null);
-  };
-
-  const saveClinicalFlags = async () => {
-    if (!client) {
-      return;
-    }
-
-    setSavingFlags(true);
-    setFlagsSavedMessage(null);
-
-    try {
-      const response = await authFetch(`/api/clients/${client.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clinicalFlags: selectedFlags }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to update clinical flags');
-      }
-
-      const data = await response.json();
-      setClient(data.client ?? client);
-      setSelectedFlags(((data.client?.clinicalFlags ?? selectedFlags) as ClinicalFlag[]).filter((flag) => flag !== 'PACEMAKER'));
-      setFlagsSavedMessage('Vistað.');
-    } catch (error) {
-      console.error('Error updating clinical flags:', error);
-      setFlagsSavedMessage('Ekki tókst að vista.');
-    } finally {
-      setSavingFlags(false);
-    }
-  };
 
   const saveTreatment = async () => {
     if (!nextAppointment?.id) {
@@ -431,44 +383,11 @@ export default function ClientDetailPage() {
                 <a href={`tel:${formatPhone(client.phone)}`} className="font-medium text-blue-700">Sími: {client.phone}</a>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                {selectedFlags.length > 0 ? (
-                  selectedFlags.map((flag) => (
-                    <span key={flag} className="rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700">
-                      {clinicalFlagMetaByValue[flag].icon} {clinicalFlagMetaByValue[flag].label}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-xs text-gray-500">Engin flögg valin.</span>
-                )}
+              <div>
+                <Link href={`/clients/${client.id}/edit`}>
+                  <Button size="sm" variant="outline">Breyta</Button>
+                </Link>
               </div>
-
-              <details className="rounded-lg border border-gray-200 bg-white p-2">
-                <summary className="cursor-pointer text-xs font-medium text-gray-700">Velja flögg</summary>
-                <div className="mt-2 space-y-2">
-                  {clinicalFlagOptions.map((option) => {
-                    const isSelected = selectedFlags.includes(option.value);
-
-                    return (
-                      <label key={option.value} className="flex items-center gap-2 text-sm text-gray-700">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleFlag(option.value)}
-                          className="h-4 w-4 rounded border-gray-300"
-                        />
-                        <span>{option.icon} {option.label}</span>
-                      </label>
-                    );
-                  })}
-                  <div className="pt-1">
-                    <Button size="sm" onClick={saveClinicalFlags} disabled={savingFlags}>
-                      {savingFlags ? 'Vistar...' : 'Vista flögg'}
-                    </Button>
-                    {flagsSavedMessage && <p className="mt-1 text-xs text-gray-600">{flagsSavedMessage}</p>}
-                  </div>
-                </div>
-              </details>
             </div>
           )}
 
@@ -648,7 +567,7 @@ export default function ClientDetailPage() {
                               <div className="flex items-center justify-between gap-2">
                                 <p className="text-sm font-medium text-gray-900">{formatDateTime(appointment.startTime)}</p>
                                 <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">
-                                  {appointment.type ?? appointment.status}
+                                  {formatBookedService(appointment)}
                                 </span>
                               </div>
                               <p className="mt-1 text-xs text-gray-600">Staða: {appointment.status}</p>
@@ -729,7 +648,7 @@ export default function ClientDetailPage() {
                                 href={`/appointments/${appointment.id}`}
                                 className="block rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700"
                               >
-                                {formatDateTime(appointment.startTime)} · {appointment.type ?? appointment.status}
+                                {formatDateTime(appointment.startTime)} · {formatBookedService(appointment)}
                               </Link>
                             ))}
                           </div>

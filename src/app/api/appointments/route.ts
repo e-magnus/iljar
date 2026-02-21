@@ -1,6 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
 import { requireAuth } from '@/lib/auth/guard';
+
+function isOverlapConstraintError(error: unknown): boolean {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    return error.code === 'P2004' && error.message.includes('appointment_no_overlap_active');
+  }
+
+  const databaseError = error as { code?: string; constraint?: string; message?: string };
+  return (
+    databaseError.code === '23P01' ||
+    databaseError.constraint === 'appointment_no_overlap_active' ||
+    databaseError.message?.includes('appointment_no_overlap_active') === true
+  );
+}
 
 // Get all appointments or create new
 export async function GET(request: NextRequest) {
@@ -195,6 +209,13 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ appointment }, { status: 201 });
   } catch (error) {
+    if (isOverlapConstraintError(error)) {
+      return NextResponse.json(
+        { error: 'Time slot is already booked' },
+        { status: 409 }
+      );
+    }
+
     console.error('Create appointment error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },

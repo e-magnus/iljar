@@ -7,6 +7,9 @@ import { requireAuth } from '@/lib/auth/guard';
 import { GET as getClients } from '@/app/api/clients/route';
 import { POST as refreshPost } from '@/app/api/auth/refresh/route';
 import { POST as loginPost } from '@/app/api/auth/login/route';
+import { GET as getSettings, PATCH as patchSettings } from '@/app/api/settings/route';
+import { DELETE as deleteTotp } from '@/app/api/auth/totp/route';
+import { GET as getServices } from '@/app/api/services/route';
 
 function requestFor(url: string, options?: RequestInit): NextRequest {
   return new NextRequest(url, options);
@@ -104,4 +107,54 @@ test('public login route is not guarded by auth middleware', async () => {
   assert.equal(response.status, 400);
   const body = await response.json();
   assert.equal(body.error, 'Email and password are required');
+});
+
+test('protected settings route returns 401 without token', async () => {
+  const request = requestFor('http://localhost/api/settings');
+  const response = await getSettings(request);
+
+  assert.equal(response.status, 401);
+  const body = await response.json();
+  assert.equal(body.code, 'AUTH_REQUIRED');
+});
+
+test('protected settings patch returns 401 without token', async () => {
+  const request = requestFor('http://localhost/api/settings', {
+    method: 'PATCH',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ booking: { slotLength: 30, bufferTime: 5 } }),
+  });
+
+  const response = await patchSettings(request);
+
+  assert.equal(response.status, 401);
+  const body = await response.json();
+  assert.equal(body.code, 'AUTH_REQUIRED');
+});
+
+test('protected TOTP disable route returns 401 without token', async () => {
+  const request = requestFor('http://localhost/api/auth/totp', {
+    method: 'DELETE',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ totpToken: '123456' }),
+  });
+
+  const response = await deleteTotp(request);
+
+  assert.equal(response.status, 401);
+  const body = await response.json();
+  assert.equal(body.code, 'AUTH_REQUIRED');
+});
+
+test('protected services route returns 401 without token', async () => {
+  const request = requestFor('http://localhost/api/services');
+  const response = await getServices(request);
+
+  assert.equal(response.status, 401);
+  const body = await response.json();
+  assert.equal(body.code, 'AUTH_REQUIRED');
 });
