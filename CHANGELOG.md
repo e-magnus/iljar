@@ -9,6 +9,11 @@ All notable changes to the iljar project.
 - `npm run dev` now bootstraps local development automatically by running DB startup/migrations (`db:up`), checking seed presence, and only seeding when data is missing.
 - Added `npm run dev:app` for starting `next dev` without DB/seed bootstrap.
 - Removed manual consent checkbox from visit/client photo upload UI; consent metadata remains recorded automatically on upload.
+- Mobile UX refinements across booking, clients, and calendar screens with larger touch targets and sticky/fixed action controls.
+- Booking flow now supports mobile step navigation with tappable step indicators and a persistent bottom action bar (`Til baka`, `Áfram`, `Staðfesta`).
+- Appointment event workflow updated: removed standalone “Merkja mætt” action, added dedicated “Merkja skróp”, and improved rescheduling flow.
+- Appointment rescheduling now uses booking-style date selection with month view and available-hours-per-day indicators before selecting a new slot.
+- Appointment detail layout simplified by removing duplicated client info and replacing right column with focused quick actions.
 
 ### Added
 
