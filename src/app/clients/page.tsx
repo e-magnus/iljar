@@ -85,33 +85,35 @@ export default function ClientsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <main className="max-w-4xl mx-auto px-4 py-8">
-        <h1 className="mb-6 text-2xl font-bold text-gray-900">Skjólstæðingar</h1>
+      <main className="max-w-4xl mx-auto px-4 py-6 pb-28 md:pb-8">
+        <h1 className="mb-4 text-2xl font-bold text-gray-900">Skjólstæðingar</h1>
 
         <Card>
           <CardContent className="space-y-4">
-            <div className="flex flex-col gap-3 sm:flex-row">
+            <div className="sticky top-12 z-10 -mx-4 border-b border-gray-200 bg-gray-50 px-4 pb-3 pt-1 sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">
+              <div className="flex flex-col gap-3 sm:flex-row">
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={handleSearchKeyDown}
                 placeholder="Leita að skjólstæðingi (nafn/sími/kennitala)"
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder-gray-400"
+                className="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-gray-900 placeholder-gray-400"
               />
-              <Link href="/clients/new" className="sm:w-auto">
+              <Link href="/clients/new" className="hidden sm:block sm:w-auto">
                 <Button className="w-full bg-green-600 text-white hover:bg-green-700 focus:ring-green-500">
                   Nýskráning
                 </Button>
               </Link>
             </div>
+            </div>
 
             {loading ? (
-              <p className="text-sm text-gray-600">Leita...</p>
+              <p className="rounded-lg border border-gray-200 bg-white px-3 py-3 text-sm text-gray-600">Leita...</p>
             ) : error ? (
-              <p className="text-sm text-red-600">{error}</p>
+              <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700">{error}</p>
             ) : clients.length === 0 ? (
-              <p className="text-sm text-gray-600">Engir skjólstæðingar fundust.</p>
+              <p className="rounded-lg border border-gray-200 bg-white px-3 py-4 text-sm text-gray-600">Engir skjólstæðingar fundust.</p>
             ) : (
               <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
                 <div className="border-b border-gray-200 bg-gray-50 px-4 py-2 text-sm text-gray-600">
@@ -121,7 +123,7 @@ export default function ClientsPage() {
                   {clients.map((client, index) => (
                     <li key={client.id}>
                       <div
-                        className={`flex items-center justify-between gap-3 px-4 py-3 ${index === activeIndex ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
+                        className={`flex items-center justify-between gap-3 px-4 py-4 ${index === activeIndex ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
                         onMouseEnter={() => setActiveIndex(index)}
                       >
                         <Link href={`/clients/${client.id}`} className="min-w-0 flex-1">
@@ -143,6 +145,14 @@ export default function ClientsPage() {
             )}
           </CardContent>
         </Card>
+
+        <div className="fixed inset-x-0 bottom-16 z-30 border-t border-gray-200 bg-white/95 px-4 py-3 backdrop-blur sm:hidden">
+          <Link href="/clients/new" className="block">
+            <Button className="w-full bg-green-600 text-white hover:bg-green-700 focus:ring-green-500">
+              Nýskráning
+            </Button>
+          </Link>
+        </div>
       </main>
     </div>
   );

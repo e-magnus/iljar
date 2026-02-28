@@ -15,7 +15,19 @@ type CustomClinicalFlag = {
   icon: string;
 };
 
+type ClientOverviewVisibility = {
+  showKennitala: boolean;
+  showPhone: boolean;
+  showFlags: boolean;
+};
+
 const allowedClinicalFlagIcons = ['🩸', '🧪', '⚠️', '🦶', '❤️', 'ℹ️', '🫀', '🫁', '🦴', '💊', '🩹', '🧬'] as const;
+
+const defaultClientOverviewVisibility: ClientOverviewVisibility = {
+  showKennitala: true,
+  showPhone: true,
+  showFlags: true,
+};
 
 function validateBookingInput(slotLength: unknown, bufferTime: unknown) {
   if (!Number.isInteger(slotLength) || !Number.isInteger(bufferTime)) {
@@ -169,6 +181,43 @@ function parseStoredCustomFlags(customFlags: Prisma.JsonValue | null | undefined
   return normalizeCustomFlags(parsed);
 }
 
+function validateClientOverviewVisibilityInput(overview: unknown) {
+  if (typeof overview !== 'object' || overview === null) {
+    return { valid: false, error: 'clients.overview must be an object' };
+  }
+
+  const parsed = overview as Partial<ClientOverviewVisibility>;
+  if (
+    typeof parsed.showKennitala !== 'boolean' ||
+    typeof parsed.showPhone !== 'boolean' ||
+    typeof parsed.showFlags !== 'boolean'
+  ) {
+    return { valid: false, error: 'clients.overview fields must be booleans' };
+  }
+
+  return {
+    valid: true,
+    normalized: {
+      showKennitala: parsed.showKennitala,
+      showPhone: parsed.showPhone,
+      showFlags: parsed.showFlags,
+    } satisfies ClientOverviewVisibility,
+  };
+}
+
+function parseStoredClientOverviewVisibility(input: Prisma.JsonValue | null | undefined): ClientOverviewVisibility {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    return defaultClientOverviewVisibility;
+  }
+
+  const value = input as Partial<ClientOverviewVisibility>;
+  return {
+    showKennitala: typeof value.showKennitala === 'boolean' ? value.showKennitala : true,
+    showPhone: typeof value.showPhone === 'boolean' ? value.showPhone : true,
+    showFlags: typeof value.showFlags === 'boolean' ? value.showFlags : true,
+  };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const auth = requireAuth(request);
@@ -187,6 +236,7 @@ export async function GET(request: NextRequest) {
           bufferTime: true,
           blockRedDays: true,
           customClinicalFlags: true,
+          clientOverviewVisibility: true,
           updatedAt: true,
         },
       }),
@@ -229,6 +279,9 @@ export async function GET(request: NextRequest) {
       clinical: {
         customFlags: parseStoredCustomFlags(settings?.customClinicalFlags),
       },
+      clients: {
+        overview: parseStoredClientOverviewVisibility(settings?.clientOverviewVisibility),
+      },
       notifications: {
         remindersConfigured,
       },
@@ -251,12 +304,14 @@ export async function PATCH(request: NextRequest) {
     const booking = body?.booking;
     const scheduling = body?.scheduling;
     const clinical = body?.clinical;
+    const clients = body?.clients;
     const workingHours = scheduling?.workingHours;
     const customFlags = clinical?.customFlags;
+    const clientOverview = clients?.overview;
 
-    if (!booking && !scheduling && !clinical) {
+    if (!booking && !scheduling && !clinical && !clients) {
       return NextResponse.json(
-        { error: 'At least one of booking, scheduling, or clinical payload is required' },
+        { error: 'At least one of booking, scheduling, clinical, or clients payload is required' },
         { status: 400 }
       );
     }
@@ -289,6 +344,16 @@ export async function PATCH(request: NextRequest) {
       normalizedCustomFlags = customFlagsValidation.normalized;
     }
 
+    let normalizedClientOverviewVisibility: ClientOverviewVisibility | undefined;
+    if (clientOverview !== undefined) {
+      const clientOverviewValidation = validateClientOverviewVisibilityInput(clientOverview);
+      if (!clientOverviewValidation.valid) {
+        return NextResponse.json({ error: clientOverviewValidation.error }, { status: 400 });
+      }
+
+      normalizedClientOverviewVisibility = clientOverviewValidation.normalized;
+    }
+
     const updated = await prisma.$transaction(async (tx) => {
       const existing = await tx.settings.findFirst({
         select: { id: true },
@@ -310,12 +375,16 @@ export async function PATCH(request: NextRequest) {
               ...(normalizedCustomFlags !== undefined
                 ? { customClinicalFlags: normalizedCustomFlags }
                 : {}),
+              ...(normalizedClientOverviewVisibility !== undefined
+                ? { clientOverviewVisibility: normalizedClientOverviewVisibility }
+                : {}),
             },
             select: {
               slotLength: true,
               bufferTime: true,
               blockRedDays: true,
               customClinicalFlags: true,
+              clientOverviewVisibility: true,
               updatedAt: true,
             },
           })
@@ -325,12 +394,14 @@ export async function PATCH(request: NextRequest) {
               bufferTime: booking?.bufferTime ?? 5,
               blockRedDays: scheduling?.blockRedDays ?? false,
               customClinicalFlags: normalizedCustomFlags ?? [],
+              clientOverviewVisibility: normalizedClientOverviewVisibility ?? defaultClientOverviewVisibility,
             },
             select: {
               slotLength: true,
               bufferTime: true,
               blockRedDays: true,
               customClinicalFlags: true,
+              clientOverviewVisibility: true,
               updatedAt: true,
             },
           });
@@ -393,6 +464,9 @@ export async function PATCH(request: NextRequest) {
       },
       clinical: {
         customFlags: parseStoredCustomFlags(updated.settingsRecord.customClinicalFlags),
+      },
+      clients: {
+        overview: parseStoredClientOverviewVisibility(updated.settingsRecord.clientOverviewVisibility),
       },
       updatedAt: updated.settingsRecord.updatedAt.toISOString(),
     });

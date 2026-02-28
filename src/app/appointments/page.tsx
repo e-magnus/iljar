@@ -109,7 +109,6 @@ export default function AppointmentsPage() {
   const [draggedAppointmentId, setDraggedAppointmentId] = useState<string | null>(null);
   const [movingAppointmentId, setMovingAppointmentId] = useState<string | null>(null);
   const [touchDraggingAppointmentId, setTouchDraggingAppointmentId] = useState<string | null>(null);
-  const [showMobileBottomNav, setShowMobileBottomNav] = useState(false);
   const [workingHours, setWorkingHours] = useState<WorkingHour[]>([]);
   const [weekLabel, setWeekLabel] = useState<string>('Þessi vika');
   const [weekMetrics, setWeekMetrics] = useState<WeekMetrics>({
@@ -531,13 +530,9 @@ export default function AppointmentsPage() {
   }, []);
 
   useEffect(() => {
-    const onScroll = () => {
-      setShowMobileBottomNav(window.scrollY > 120);
-    };
-
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    if (window.innerWidth < 768) {
+      setViewMode('day');
+    }
   }, []);
 
   return (
@@ -717,11 +712,7 @@ export default function AppointmentsPage() {
                   <Button variant="outline" onClick={nextRange}>▶</Button>
                 </div>
 
-                <div
-                  className={`md:hidden fixed bottom-0 inset-x-0 z-20 border-t border-gray-200 bg-white/95 backdrop-blur px-4 py-3 transition-transform duration-200 ${
-                    showMobileBottomNav ? 'translate-y-0' : 'translate-y-full'
-                  }`}
-                >
+                <div className="md:hidden fixed bottom-0 inset-x-0 z-20 border-t border-gray-200 bg-white/95 backdrop-blur px-4 py-3">
                   <div className="mx-auto max-w-7xl flex items-center justify-between gap-2">
                     <Button variant="outline" onClick={previousRange}>◀</Button>
                     <Button

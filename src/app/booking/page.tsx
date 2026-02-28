@@ -108,6 +108,8 @@ export default function BookingPage() {
   const [newClientPhone, setNewClientPhone] = useState('');
   const [newClientKennitala, setNewClientKennitala] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [mobileStep, setMobileStep] = useState(1);
 
   const selectedService = services.find((service) => service.id === selectedServiceId) ?? null;
 
@@ -153,6 +155,17 @@ export default function BookingPage() {
     if (queryClientId) {
       setPrefillClientId(queryClientId);
     }
+
+    const syncViewport = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    syncViewport();
+    window.addEventListener('resize', syncViewport);
+
+    return () => {
+      window.removeEventListener('resize', syncViewport);
+    };
   }, []);
 
   useEffect(() => {
@@ -297,6 +310,9 @@ export default function BookingPage() {
     setSelectedServiceId(serviceId);
     setSelectedSlot(null);
     setSelectedClient(null);
+    if (isMobile) {
+      setMobileStep(2);
+    }
   };
 
   const handleDateQuickSelect = (date: string) => {
@@ -304,10 +320,16 @@ export default function BookingPage() {
     setVisibleMonth(monthStart(new Date(`${date}T00:00:00`)));
     setSelectedSlot(null);
     setSelectedClient(null);
+    if (isMobile) {
+      setMobileStep(3);
+    }
   };
 
   const handleSlotSelect = (slot: TimeSlot) => {
     setSelectedSlot(slot);
+    if (isMobile) {
+      setMobileStep(4);
+    }
   };
 
   const handleClientSelect = (client: Client) => {
@@ -406,6 +428,54 @@ export default function BookingPage() {
   const visibleMonthDays = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 0).getDate();
   const weekdayHeaders = ['Mán', 'Þri', 'Mið', 'Fim', 'Fös', 'Lau', 'Sun'];
   const progressStep = !selectedServiceId ? 1 : !selectedDate ? 2 : !selectedSlot ? 3 : 4;
+  const isStepVisible = (step: number) => !isMobile || mobileStep === step;
+  const canProceedFromStep = (step: number) => {
+    if (step === 1) {
+      return Boolean(selectedServiceId);
+    }
+
+    if (step === 2) {
+      return Boolean(selectedDate);
+    }
+
+    if (step === 3) {
+      return Boolean(selectedSlot);
+    }
+
+    if (step !== 4) {
+      return false;
+    }
+
+    if (!selectedSlot) {
+      return false;
+    }
+
+    if (clientMode === 'existing') {
+      return Boolean(selectedClient);
+    }
+
+    return Boolean(newClientName.trim() && newClientPhone.trim());
+  };
+
+  const canJumpToStep = (targetStep: number) => {
+    if (!isMobile) {
+      return false;
+    }
+
+    if (targetStep <= mobileStep) {
+      return true;
+    }
+
+    return targetStep <= progressStep;
+  };
+
+  const handleStepTap = (targetStep: number) => {
+    if (!canJumpToStep(targetStep)) {
+      return;
+    }
+
+    setMobileStep(targetStep);
+  };
 
   const timeEntries = [
     ...slots.map((slot) => ({
@@ -430,24 +500,28 @@ export default function BookingPage() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-32 md:pb-8">
         {/* Progress Steps */}
-        <div className="sticky top-0 z-20 -mx-4 mb-8 border-b border-gray-200 bg-gray-50 px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-          <div className="flex items-center justify-between">
+        <div className="sticky top-12 z-30 -mx-4 mb-8 border-b border-gray-200 bg-gray-50 px-4 py-3 sm:-mx-6 sm:top-0 sm:px-6 lg:-mx-8 lg:px-8">
+          <div className="flex items-center gap-1 sm:gap-2">
             {[1, 2, 3, 4].map((s) => (
-              <div key={s} className="flex items-center">
-                <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${
+              <div key={s} className="flex min-w-0 flex-1 items-center">
+                <button
+                  type="button"
+                  onClick={() => handleStepTap(s)}
+                  disabled={!canJumpToStep(s)}
+                  aria-label={`Fara í skref ${s}`}
+                  className={`h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-sm font-bold sm:h-10 sm:w-10 sm:text-base ${
                     progressStep >= s
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-300 text-gray-600'
-                  }`}
+                  } ${isMobile && canJumpToStep(s) ? 'cursor-pointer' : ''}`}
                 >
                   {s}
-                </div>
+                </button>
                 {s < 4 && (
                   <div
-                    className={`h-1 w-20 mx-2 ${
+                    className={`mx-1 h-1 min-w-0 flex-1 sm:mx-2 ${
                       progressStep > s ? 'bg-blue-600' : 'bg-gray-300'
                     }`}
                   />
@@ -455,15 +529,15 @@ export default function BookingPage() {
               </div>
             ))}
           </div>
-          <div className="flex justify-between mt-2 text-sm">
-            <span>Þjónusta</span>
-            <span>Dagur</span>
-            <span>Tími</span>
-            <span>Skjólstæðingur</span>
+          <div className="mt-2 grid grid-cols-4 gap-1 text-center text-[11px] text-gray-700 sm:text-sm">
+            <span className="truncate">Þjónusta</span>
+            <span className="truncate">Dagur</span>
+            <span className="truncate">Tími</span>
+            <span className="truncate">Skjólstæðingur</span>
           </div>
         </div>
 
-        <Card className="mb-6">
+        <Card className={`mb-6 ${isStepVisible(1) ? '' : 'hidden'}`}>
           <CardHeader>
             <CardTitle>1. Veldu þjónustu</CardTitle>
           </CardHeader>
@@ -495,7 +569,7 @@ export default function BookingPage() {
           </CardContent>
         </Card>
 
-        <Card className="mb-6">
+        <Card className={`mb-6 ${isStepVisible(2) ? '' : 'hidden'}`}>
           <CardHeader>
             <CardTitle>2. Veldu dag í dagatali</CardTitle>
           </CardHeader>
@@ -589,7 +663,7 @@ export default function BookingPage() {
           </CardContent>
         </Card>
 
-        <Card className="mb-6">
+        <Card className={`mb-6 ${isStepVisible(3) ? '' : 'hidden'}`}>
           <CardHeader>
             <CardTitle>3. Veldu tíma (lausir og bókaðir)</CardTitle>
           </CardHeader>
@@ -635,7 +709,7 @@ export default function BookingPage() {
           </CardContent>
         </Card>
 
-        <Card className="mb-6">
+        <Card className={`mb-6 ${isStepVisible(4) ? '' : 'hidden'}`}>
           <CardHeader>
             <CardTitle>4. Veldu skjólstæðing eða skráðu nýjan</CardTitle>
           </CardHeader>
@@ -644,21 +718,27 @@ export default function BookingPage() {
               <p className="text-sm text-gray-600">Veldu fyrst tíma til að halda áfram.</p>
             ) : (
               <>
-                <div className="mb-4 flex gap-2">
-                  <Button
-                    type="button"
-                    variant={clientMode === 'existing' ? 'primary' : 'outline'}
-                    onClick={() => setClientMode('existing')}
-                  >
-                    Þekktur skjólstæðingur
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={clientMode === 'new' ? 'primary' : 'outline'}
-                    onClick={() => setClientMode('new')}
-                  >
-                    Nýr skjólstæðingur
-                  </Button>
+                <div className="mb-4 flex justify-end">
+                  {clientMode === 'existing' ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setClientMode('new');
+                        setSelectedClient(null);
+                      }}
+                    >
+                      Nýr skjólstæðingur
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setClientMode('existing')}
+                    >
+                      Velja úr lista
+                    </Button>
+                  )}
                 </div>
 
                 {clientMode === 'existing' ? (
@@ -717,7 +797,7 @@ export default function BookingPage() {
           </CardContent>
         </Card>
 
-        {selectedSlot && (
+        {selectedSlot && isStepVisible(4) && (
           <Card>
             <CardHeader>
               <CardTitle>Staðfesta bókun</CardTitle>
@@ -777,6 +857,42 @@ export default function BookingPage() {
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {isMobile && (
+          <div className="fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white/95 px-4 py-3 backdrop-blur">
+            <div className="mx-auto flex max-w-4xl items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => setMobileStep((current) => Math.max(1, current - 1))}
+                disabled={mobileStep === 1 || submitting}
+              >
+                Til baka
+              </Button>
+
+              {mobileStep < 4 ? (
+                <Button
+                  type="button"
+                  className="flex-1"
+                  onClick={() => setMobileStep((current) => Math.min(4, current + 1))}
+                  disabled={!canProceedFromStep(mobileStep) || submitting}
+                >
+                  Áfram
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  className="flex-1"
+                  onClick={handleConfirm}
+                  disabled={!canProceedFromStep(4) || submitting}
+                >
+                  {submitting ? 'Bókar...' : 'Staðfesta'}
+                </Button>
+              )}
+            </div>
+          </div>
         )}
       </main>
     </div>

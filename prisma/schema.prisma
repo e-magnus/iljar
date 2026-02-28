@@ -162,5 +162,6 @@ model Settings {
   bufferTime    Int      @default(5)   // minutes between appointments
   blockRedDays  Boolean  @default(false)
   customClinicalFlags Json    @default("[]")
+  clientOverviewVisibility Json @default("{\"showKennitala\":true,\"showPhone\":true,\"showFlags\":true}")
   updatedAt     DateTime @updatedAt
 }

@@ -1,10 +1,35 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { authFetch } from '@/lib/api/client';
+import {
+  applyDensity,
+  applyFontSize,
+  applyLanguage,
+  applyTheme,
+  DEFAULT_DENSITY,
+  DEFAULT_FONT_SIZE,
+  DEFAULT_LANGUAGE,
+  DEFAULT_START_PAGE,
+  DEFAULT_THEME,
+  DENSITY_STORAGE_KEY,
+  FONT_SIZE_STORAGE_KEY,
+  LANGUAGE_STORAGE_KEY,
+  resolveStoredDensity,
+  resolveStoredFontSize,
+  resolveStoredLanguage,
+  resolveStoredStartPage,
+  START_PAGE_STORAGE_KEY,
+  THEME_STORAGE_KEY,
+  type AppDensity,
+  type AppFontSize,
+  type AppLanguage,
+  type AppStartPage,
+  type AppTheme,
+} from '@/components/ui/ThemeInitializer';
 
 interface WorkingHour {
   weekday: number;
@@ -41,11 +66,30 @@ interface SettingsResponse {
   clinical: {
     customFlags: CustomFlag[];
   };
+  clients: {
+    overview: {
+      showKennitala: boolean;
+      showPhone: boolean;
+      showFlags: boolean;
+    };
+  };
   notifications: {
     remindersConfigured: boolean;
   };
   updatedAt: string | null;
 }
+
+interface ClientOverviewVisibility {
+  showKennitala: boolean;
+  showPhone: boolean;
+  showFlags: boolean;
+}
+
+const defaultClientOverviewVisibility: ClientOverviewVisibility = {
+  showKennitala: true,
+  showPhone: true,
+  showFlags: true,
+};
 
 const weekdayLabels: Record<number, string> = {
   0: 'Sunnudagur',
@@ -169,6 +213,86 @@ function resolveManagedFlags(input: CustomFlag[]): CustomFlag[] {
   return normalizeFlags([...builtInClinicalFlags, ...withoutMarker]);
 }
 
+type SettingsSectionKey = 'general' | 'security' | 'calendar' | 'clients';
+type SettingsSubSectionKey =
+  | 'general-theme'
+  | 'general-language'
+  | 'general-start-page'
+  | 'general-density'
+  | 'general-font-size'
+  | 'security-2fa'
+  | 'security-password'
+  | 'security-notifications'
+  | 'calendar-slots'
+  | 'calendar-working-hours'
+  | 'calendar-services'
+  | 'clients-overview'
+  | 'clients-flags';
+
+interface SettingsSectionProps {
+  id?: string;
+  title: string;
+  sectionKey: SettingsSectionKey;
+  openSection: SettingsSectionKey | null;
+  onToggle: (section: SettingsSectionKey) => void;
+  children: ReactNode;
+  className?: string;
+}
+
+function SettingsSection({ id, title, sectionKey, openSection, onToggle, children, className = '' }: SettingsSectionProps) {
+  const isOpen = openSection === sectionKey;
+
+  return (
+    <div id={id} className={className}>
+      <Card>
+        <CardHeader className={isOpen ? '' : 'border-b-0'}>
+          <button
+            type="button"
+            onClick={() => onToggle(sectionKey)}
+            className="flex w-full items-center justify-between text-left"
+            aria-expanded={isOpen}
+          >
+            <CardTitle className="text-base sm:text-lg">{title}</CardTitle>
+            <span className={`text-lg text-gray-500 transition-transform ${isOpen ? 'rotate-90' : ''}`} aria-hidden>
+              ›
+            </span>
+          </button>
+        </CardHeader>
+        {isOpen ? <CardContent>{children}</CardContent> : null}
+      </Card>
+    </div>
+  );
+}
+
+interface SettingsSubSectionProps {
+  title: string;
+  subSectionKey: SettingsSubSectionKey;
+  openSubSection: SettingsSubSectionKey | null;
+  onToggle: (subSection: SettingsSubSectionKey) => void;
+  children: ReactNode;
+}
+
+function SettingsSubSection({ title, subSectionKey, openSubSection, onToggle, children }: SettingsSubSectionProps) {
+  const isOpen = openSubSection === subSectionKey;
+
+  return (
+    <div className="rounded-lg border border-gray-200">
+      <button
+        type="button"
+        onClick={() => onToggle(subSectionKey)}
+        className="flex w-full items-center justify-between px-4 py-3 text-left"
+        aria-expanded={isOpen}
+      >
+        <span className="font-medium text-gray-900">{title}</span>
+        <span className={`text-lg text-gray-500 transition-transform ${isOpen ? 'rotate-90' : ''}`} aria-hidden>
+          ›
+        </span>
+      </button>
+      {isOpen ? <div className="border-t border-gray-200 p-4">{children}</div> : null}
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [savingBooking, setSavingBooking] = useState(false);
@@ -216,6 +340,23 @@ export default function SettingsPage() {
   const [draggingServiceId, setDraggingServiceId] = useState<string | null>(null);
   const [dragOverServiceId, setDragOverServiceId] = useState<string | null>(null);
   const [serviceRefreshing, setServiceRefreshing] = useState(false);
+  const [openSection, setOpenSection] = useState<SettingsSectionKey | null>(null);
+  const [openSubSection, setOpenSubSection] = useState<SettingsSubSectionKey | null>(null);
+  const [clientOverviewVisibility, setClientOverviewVisibility] = useState<ClientOverviewVisibility>(defaultClientOverviewVisibility);
+  const [initialClientOverviewVisibility, setInitialClientOverviewVisibility] = useState<ClientOverviewVisibility>(defaultClientOverviewVisibility);
+  const [savingClientOverview, setSavingClientOverview] = useState(false);
+
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [appTheme, setAppTheme] = useState<AppTheme>('light');
+  const [appLanguage, setAppLanguage] = useState<AppLanguage>('is');
+  const [appStartPage, setAppStartPage] = useState<AppStartPage>('/dashboard');
+  const [appDensity, setAppDensity] = useState<AppDensity>('comfortable');
+  const [appFontSize, setAppFontSize] = useState<AppFontSize>('medium');
 
   const slotLengthValid = Number.isInteger(slotLength) && slotLength >= 5 && slotLength <= 180;
   const bufferTimeValid = Number.isInteger(bufferTime) && bufferTime >= 0 && bufferTime <= 60;
@@ -242,6 +383,8 @@ export default function SettingsPage() {
   const canSaveScheduling = hasSchedulingChanges && workingHoursValid && !savingScheduling;
   const hasFlagChanges = JSON.stringify(customFlags) !== JSON.stringify(initialCustomFlags);
   const canSaveFlags = hasFlagChanges && !savingFlags;
+  const hasClientOverviewChanges = JSON.stringify(clientOverviewVisibility) !== JSON.stringify(initialClientOverviewVisibility);
+  const canSaveClientOverview = hasClientOverviewChanges && !savingClientOverview;
 
   const bookingValidationMessage = useMemo(() => {
     if (!slotLengthValid) {
@@ -254,6 +397,15 @@ export default function SettingsPage() {
 
     return '';
   }, [slotLengthValid, bufferTimeValid]);
+
+  useEffect(() => {
+    const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    setAppTheme(savedTheme === 'dark' ? 'dark' : 'light');
+    setAppLanguage(resolveStoredLanguage());
+    setAppStartPage(resolveStoredStartPage());
+    setAppDensity(resolveStoredDensity());
+    setAppFontSize(resolveStoredFontSize());
+  }, []);
 
   useEffect(() => {
     async function fetchSettings() {
@@ -292,6 +444,9 @@ export default function SettingsPage() {
         const loadedFlags = resolveManagedFlags(readFlags(settings.clinical?.customFlags));
         setCustomFlags(loadedFlags);
         setInitialCustomFlags(loadedFlags);
+        const overviewVisibility = settings.clients?.overview ?? defaultClientOverviewVisibility;
+        setClientOverviewVisibility(overviewVisibility);
+        setInitialClientOverviewVisibility(overviewVisibility);
       } catch {
         setError('Villa kom upp við að tengjast þjóni.');
       } finally {
@@ -538,6 +693,138 @@ export default function SettingsPage() {
     } finally {
       setRefreshingFlags(false);
     }
+  };
+
+  const handleSaveClientOverview = async () => {
+    if (!canSaveClientOverview) {
+      return;
+    }
+
+    setSavingClientOverview(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const res = await authFetch('/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clients: {
+            overview: clientOverviewVisibility,
+          },
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? 'Gat ekki vistað skjólstæðingastillingar.');
+        return;
+      }
+
+      const overviewVisibility = data.clients?.overview ?? clientOverviewVisibility;
+      setClientOverviewVisibility(overviewVisibility);
+      setInitialClientOverviewVisibility(overviewVisibility);
+      setSuccess('Skjólstæðingastillingar vistaðar.');
+    } catch {
+      setError('Villa kom upp við vistun skjólstæðingastillinga.');
+    } finally {
+      setSavingClientOverview(false);
+    }
+  };
+
+  const handleSavePassword = async () => {
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordError('Fylltu út alla lykilorðareiti.');
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setPasswordError('Nýtt lykilorð þarf að vera minnst 8 stafir.');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Nýtt lykilorð og staðfesting passa ekki saman.');
+      return;
+    }
+
+    setSavingPassword(true);
+    try {
+      const res = await authFetch('/api/me/password', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentPassword,
+          newPassword,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setPasswordError(data.error ?? 'Gat ekki endurstillt lykilorð.');
+        return;
+      }
+
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordSuccess('Lykilorð hefur verið uppfært.');
+    } catch {
+      setPasswordError('Villa kom upp við uppfærslu lykilorðs.');
+    } finally {
+      setSavingPassword(false);
+    }
+  };
+
+  const handleThemeChange = (theme: AppTheme) => {
+    setAppTheme(theme);
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    applyTheme(theme);
+  };
+
+  const handleLanguageChange = (language: AppLanguage) => {
+    setAppLanguage(language);
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
+    applyLanguage(language);
+  };
+
+  const handleStartPageChange = (startPage: AppStartPage) => {
+    setAppStartPage(startPage);
+    window.localStorage.setItem(START_PAGE_STORAGE_KEY, startPage);
+  };
+
+  const handleDensityChange = (density: AppDensity) => {
+    setAppDensity(density);
+    window.localStorage.setItem(DENSITY_STORAGE_KEY, density);
+    applyDensity(density);
+  };
+
+  const handleFontSizeChange = (fontSize: AppFontSize) => {
+    setAppFontSize(fontSize);
+    window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, fontSize);
+    applyFontSize(fontSize);
+  };
+
+  const handleResetGeneralDefaults = () => {
+    setAppTheme(DEFAULT_THEME);
+    setAppLanguage(DEFAULT_LANGUAGE);
+    setAppStartPage(DEFAULT_START_PAGE);
+    setAppDensity(DEFAULT_DENSITY);
+    setAppFontSize(DEFAULT_FONT_SIZE);
+
+    window.localStorage.setItem(THEME_STORAGE_KEY, DEFAULT_THEME);
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, DEFAULT_LANGUAGE);
+    window.localStorage.setItem(START_PAGE_STORAGE_KEY, DEFAULT_START_PAGE);
+    window.localStorage.setItem(DENSITY_STORAGE_KEY, DEFAULT_DENSITY);
+    window.localStorage.setItem(FONT_SIZE_STORAGE_KEY, DEFAULT_FONT_SIZE);
+
+    applyTheme(DEFAULT_THEME);
+    applyLanguage(DEFAULT_LANGUAGE);
+    applyDensity(DEFAULT_DENSITY);
+    applyFontSize(DEFAULT_FONT_SIZE);
   };
 
   const moveFlag = (items: CustomFlag[], sourceLabel: string, targetLabel: string): CustomFlag[] => {
@@ -869,9 +1156,35 @@ export default function SettingsPage() {
     }
   };
 
+  useEffect(() => {
+    const hash = window.location.hash.replace('#', '');
+    if (hash === 'services') {
+      setOpenSection('calendar');
+      setOpenSubSection('calendar-services');
+      return;
+    }
+
+    if (hash === 'flags') {
+      setOpenSection('clients');
+      setOpenSubSection('clients-flags');
+    }
+  }, []);
+
+  const handleSectionToggle = (section: SettingsSectionKey) => {
+    setOpenSection((current) => {
+      const nextSection = current === section ? null : section;
+      setOpenSubSection(null);
+      return nextSection;
+    });
+  };
+
+  const handleSubSectionToggle = (subSection: SettingsSubSectionKey) => {
+    setOpenSubSection((current) => (current === subSection ? null : subSection));
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <main className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+      <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-8">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Stillingar</h1>
           <p className="text-gray-600 mt-1">Grunnstillingar fyrir öryggi og bókunarkerfi.</p>
@@ -885,503 +1198,769 @@ export default function SettingsPage() {
           <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">{success}</div>
         )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Öryggi</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <p className="text-gray-600">Hleður...</p>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between rounded-lg border border-gray-200 p-4">
-                  <div>
-                    <p className="font-medium text-gray-900">2FA (TOTP)</p>
-                    <p className="text-sm text-gray-600">Staða: {totpEnabled ? 'Virk' : 'Óvirk'}</p>
-                  </div>
-                  {!totpEnabled && (
-                    <Button onClick={handleStartTotpSetup} disabled={totpLoading}>
-                      {totpLoading ? 'Hleð...' : 'Setja upp 2FA'}
-                    </Button>
-                  )}
-                  {totpEnabled && (
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setShowDisableTotp((current) => !current);
-                        setTotpError('');
-                        setTotpSuccess('');
-                        setTotpToken('');
-                      }}
-                      disabled={totpLoading}
-                    >
-                      Slökkva á 2FA
-                    </Button>
-                  )}
-                </div>
-
-                {totpError && (
-                  <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{totpError}</div>
-                )}
-
-                {totpSuccess && (
-                  <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">{totpSuccess}</div>
-                )}
-
-                {!totpEnabled && totpQrCode && (
-                  <div className="rounded-lg border border-gray-200 p-4 space-y-3">
-                    <p className="text-sm text-gray-700">Skannaðu kóðann í authenticator appi og sláðu inn staðfestingarkóðann.</p>
-                    <Image
-                      src={totpQrCode}
-                      alt="TOTP QR"
-                      width={192}
-                      height={192}
-                      unoptimized
-                      className="w-48 h-48 border border-gray-200 rounded"
-                    />
-                    <p className="text-xs text-gray-500 break-all">Secret: {totpSecret}</p>
-
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        maxLength={6}
-                        value={totpToken}
-                        onChange={(e) => setTotpToken(e.target.value)}
-                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 placeholder-gray-400 focus:border-transparent focus:ring-2 focus:ring-blue-500"
-                        placeholder="123456"
-                      />
-                      <Button onClick={handleVerifyTotp} disabled={totpLoading || totpToken.trim().length < 6}>
-                        {totpLoading ? 'Staðfesti...' : 'Staðfesta'}
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {totpEnabled && showDisableTotp && (
-                  <div className="rounded-lg border border-gray-200 p-4 space-y-3">
-                    <p className="text-sm text-gray-700">Sláðu inn 6 stafa kóða úr authenticator appi til að staðfesta að þú viljir slökkva á 2FA.</p>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        maxLength={6}
-                        value={totpToken}
-                        onChange={(e) => setTotpToken(e.target.value)}
-                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 placeholder-gray-400 focus:border-transparent focus:ring-2 focus:ring-blue-500"
-                        placeholder="123456"
-                      />
-                      <Button onClick={handleDisableTotp} disabled={totpLoading || totpToken.trim().length < 6}>
-                        {totpLoading ? 'Slökkvi...' : 'Staðfesta'}
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Tímabókun sjálfgefið</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <p className="text-gray-600">Hleður...</p>
-            ) : (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="slotLength" className="block text-sm font-medium text-gray-700 mb-1">
-                      Lengd tíma (mín)
-                    </label>
-                    <input
-                      id="slotLength"
-                      type="number"
-                      min={5}
-                      max={180}
-                      value={slotLength}
-                      onChange={(e) => setSlotLength(Number(e.target.value))}
-                      className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-transparent focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="bufferTime" className="block text-sm font-medium text-gray-700 mb-1">
-                      Bil milli tíma (mín)
-                    </label>
-                    <input
-                      id="bufferTime"
-                      type="number"
-                      min={0}
-                      max={60}
-                      value={bufferTime}
-                      onChange={(e) => setBufferTime(Number(e.target.value))}
-                      className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-transparent focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-
-                {bookingValidationMessage && (
-                  <p className="text-sm text-red-700">{bookingValidationMessage}</p>
-                )}
-
-                <div className="flex justify-end">
-                  <Button onClick={handleSaveBooking} disabled={!canSaveBooking}>
-                    {savingBooking ? 'Vista...' : 'Vista breytingar'}
+        <SettingsSection
+          title="Almennar stillingar"
+          sectionKey="general"
+          openSection={openSection}
+          onToggle={handleSectionToggle}
+          className="order-1"
+        >
+          <div className="space-y-4">
+            <SettingsSubSection
+              title="Þema"
+              subSectionKey="general-theme"
+              openSubSection={openSubSection}
+              onToggle={handleSubSectionToggle}
+            >
+              <div className="space-y-3">
+                <p className="text-sm text-gray-700">Veldu útlit á kerfinu.</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant={appTheme === 'light' ? 'primary' : 'outline'}
+                    onClick={() => handleThemeChange('light')}
+                  >
+                    Ljóst þema
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={appTheme === 'dark' ? 'primary' : 'outline'}
+                    onClick={() => handleThemeChange('dark')}
+                  >
+                    Dökkt þema
                   </Button>
                 </div>
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </SettingsSubSection>
 
-        <div id="services">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between gap-2">
-                <CardTitle>Þjónustur</CardTitle>
-                <Button type="button" variant="outline" size="sm" onClick={handleRefreshServices} disabled={serviceRefreshing || serviceSaving}>
-                  {serviceRefreshing ? 'Sæki...' : 'Uppfæra lista'}
-                </Button>
+            <SettingsSubSection
+              title="Tungumál"
+              subSectionKey="general-language"
+              openSubSection={openSubSection}
+              onToggle={handleSubSectionToggle}
+            >
+              <div className="space-y-3">
+                <p className="text-sm text-gray-700">Veldu tungumál viðmótsins.</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant={appLanguage === 'is' ? 'primary' : 'outline'}
+                    onClick={() => handleLanguageChange('is')}
+                  >
+                    Íslenska
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={appLanguage === 'en' ? 'primary' : 'outline'}
+                    onClick={() => handleLanguageChange('en')}
+                  >
+                    English
+                  </Button>
+                </div>
               </div>
-            </CardHeader>
-            <CardContent>
+            </SettingsSubSection>
+
+            <SettingsSubSection
+              title="Sjálfgefið upphafssvæði"
+              subSectionKey="general-start-page"
+              openSubSection={openSubSection}
+              onToggle={handleSubSectionToggle}
+            >
+              <div className="space-y-3">
+                <p className="text-sm text-gray-700">Hvert viltu fara sjálfgefið eftir innskráningu?</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant={appStartPage === '/appointments' ? 'primary' : 'outline'}
+                    onClick={() => handleStartPageChange('/appointments')}
+                  >
+                    Dagatal
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={appStartPage === '/clients' ? 'primary' : 'outline'}
+                    onClick={() => handleStartPageChange('/clients')}
+                  >
+                    Skjólstæðingar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={appStartPage === '/dashboard' ? 'primary' : 'outline'}
+                    onClick={() => handleStartPageChange('/dashboard')}
+                  >
+                    Dashboard
+                  </Button>
+                </div>
+              </div>
+            </SettingsSubSection>
+
+            <SettingsSubSection
+              title="Þéttleiki viðmóts"
+              subSectionKey="general-density"
+              openSubSection={openSubSection}
+              onToggle={handleSubSectionToggle}
+            >
+              <div className="space-y-3">
+                <p className="text-sm text-gray-700">Stilltu bil í listum og töflum.</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant={appDensity === 'comfortable' ? 'primary' : 'outline'}
+                    onClick={() => handleDensityChange('comfortable')}
+                  >
+                    Comfortable
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={appDensity === 'compact' ? 'primary' : 'outline'}
+                    onClick={() => handleDensityChange('compact')}
+                  >
+                    Compact
+                  </Button>
+                </div>
+              </div>
+            </SettingsSubSection>
+
+            <SettingsSubSection
+              title="Leturstærð"
+              subSectionKey="general-font-size"
+              openSubSection={openSubSection}
+              onToggle={handleSubSectionToggle}
+            >
+              <div className="space-y-3">
+                <p className="text-sm text-gray-700">Veldu heildar leturstærð í kerfinu.</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant={appFontSize === 'small' ? 'primary' : 'outline'}
+                    onClick={() => handleFontSizeChange('small')}
+                  >
+                    Lítið
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={appFontSize === 'medium' ? 'primary' : 'outline'}
+                    onClick={() => handleFontSizeChange('medium')}
+                  >
+                    Miðlungs
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={appFontSize === 'large' ? 'primary' : 'outline'}
+                    onClick={() => handleFontSizeChange('large')}
+                  >
+                    Stórt
+                  </Button>
+                </div>
+              </div>
+            </SettingsSubSection>
+
+            <div className="flex justify-end">
+              <Button type="button" variant="secondary" onClick={handleResetGeneralDefaults}>
+                Endurstilla almennar stillingar
+              </Button>
+            </div>
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          title="Öryggi"
+          sectionKey="security"
+          openSection={openSection}
+          onToggle={handleSectionToggle}
+          className="order-4"
+        >
+          {loading ? (
+            <p className="text-gray-600">Hleður...</p>
+          ) : (
+            <div className="space-y-4">
+              <SettingsSubSection
+                title="2FA"
+                subSectionKey="security-2fa"
+                openSubSection={openSubSection}
+                onToggle={handleSubSectionToggle}
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between rounded-lg border border-gray-200 p-4">
+                    <div>
+                      <p className="font-medium text-gray-900">2FA (TOTP)</p>
+                      <p className="text-sm text-gray-600">Staða: {totpEnabled ? 'Virk' : 'Óvirk'}</p>
+                    </div>
+                    {!totpEnabled && (
+                      <Button onClick={handleStartTotpSetup} disabled={totpLoading}>
+                        {totpLoading ? 'Hleð...' : 'Setja upp 2FA'}
+                      </Button>
+                    )}
+                    {totpEnabled && (
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setShowDisableTotp((current) => !current);
+                          setTotpError('');
+                          setTotpSuccess('');
+                          setTotpToken('');
+                        }}
+                        disabled={totpLoading}
+                      >
+                        Endurstilla 2FA
+                      </Button>
+                    )}
+                  </div>
+
+                  {totpError && (
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{totpError}</div>
+                  )}
+
+                  {totpSuccess && (
+                    <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">{totpSuccess}</div>
+                  )}
+
+                  {!totpEnabled && totpQrCode && (
+                    <div className="rounded-lg border border-gray-200 p-4 space-y-3">
+                      <p className="text-sm text-gray-700">Skannaðu kóðann í authenticator appi og sláðu inn staðfestingarkóðann.</p>
+                      <Image
+                        src={totpQrCode}
+                        alt="TOTP QR"
+                        width={192}
+                        height={192}
+                        unoptimized
+                        className="w-48 h-48 border border-gray-200 rounded"
+                      />
+                      <p className="text-xs text-gray-500 break-all">Secret: {totpSecret}</p>
+
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          maxLength={6}
+                          value={totpToken}
+                          onChange={(e) => setTotpToken(e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 placeholder-gray-400 focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                          placeholder="123456"
+                        />
+                        <Button onClick={handleVerifyTotp} disabled={totpLoading || totpToken.trim().length < 6}>
+                          {totpLoading ? 'Staðfesti...' : 'Staðfesta'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {totpEnabled && showDisableTotp && (
+                    <div className="rounded-lg border border-gray-200 p-4 space-y-3">
+                      <p className="text-sm text-gray-700">Sláðu inn 6 stafa kóða til að endurstilla 2FA. Eftir þetta geturðu sett upp nýjan authenticator.</p>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          maxLength={6}
+                          value={totpToken}
+                          onChange={(e) => setTotpToken(e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 placeholder-gray-400 focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                          placeholder="123456"
+                        />
+                        <Button onClick={handleDisableTotp} disabled={totpLoading || totpToken.trim().length < 6}>
+                          {totpLoading ? 'Endurstilli...' : 'Endurstilla 2FA'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </SettingsSubSection>
+
+              <SettingsSubSection
+                title="Endurstilla lykilorð"
+                subSectionKey="security-password"
+                openSubSection={openSubSection}
+                onToggle={handleSubSectionToggle}
+              >
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <input
+                      type="password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      placeholder="Núverandi lykilorð"
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900"
+                    />
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Nýtt lykilorð"
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900"
+                    />
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Staðfesta nýtt lykilorð"
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900"
+                    />
+                  </div>
+                  {passwordError ? (
+                    <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{passwordError}</div>
+                  ) : null}
+                  {passwordSuccess ? (
+                    <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{passwordSuccess}</div>
+                  ) : null}
+                  <div className="flex justify-end">
+                    <Button type="button" onClick={handleSavePassword} disabled={savingPassword}>
+                      {savingPassword ? 'Vista...' : 'Vista nýtt lykilorð'}
+                    </Button>
+                  </div>
+                </div>
+              </SettingsSubSection>
+
+              <SettingsSubSection
+                title="Tilkynningar"
+                subSectionKey="security-notifications"
+                openSubSection={openSubSection}
+                onToggle={handleSubSectionToggle}
+              >
+                <p className="font-medium text-gray-900">Tilkynningar</p>
+                <p className="mt-1 text-sm text-gray-700">Staða áminninga: {remindersConfigured ? 'Configured' : 'Missing'}</p>
+                <p className="mt-2 text-xs text-gray-500">Read-only í MVP.</p>
+              </SettingsSubSection>
+            </div>
+          )}
+        </SettingsSection>
+
+        <SettingsSection
+          title="Dagatal"
+          sectionKey="calendar"
+          openSection={openSection}
+          onToggle={handleSectionToggle}
+          className="order-2"
+        >
+          {loading ? (
+            <p className="text-gray-600">Hleður...</p>
+          ) : (
+            <div className="space-y-4">
+              <SettingsSubSection
+                title="Bil í dagatali"
+                subSectionKey="calendar-slots"
+                openSubSection={openSubSection}
+                onToggle={handleSubSectionToggle}
+              >
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label htmlFor="slotLength" className="mb-1 block text-sm font-medium text-gray-700">
+                        Tímabil (mín)
+                      </label>
+                      <select
+                        id="slotLength"
+                        value={slotLength}
+                        onChange={(e) => setSlotLength(Number(e.target.value))}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                      >
+                        {[15, 30, 60].map((value) => (
+                          <option key={value} value={value}>{value} mín</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label htmlFor="bufferTime" className="mb-1 block text-sm font-medium text-gray-700">
+                        Bil milli tíma (mín)
+                      </label>
+                      <input
+                        id="bufferTime"
+                        type="number"
+                        min={0}
+                        max={60}
+                        value={bufferTime}
+                        onChange={(e) => setBufferTime(Number(e.target.value))}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  {bookingValidationMessage && <p className="text-sm text-red-700">{bookingValidationMessage}</p>}
+
+                  <div className="flex justify-end">
+                    <Button onClick={handleSaveBooking} disabled={!canSaveBooking}>
+                      {savingBooking ? 'Vista...' : 'Vista breytingar'}
+                    </Button>
+                  </div>
+                </div>
+              </SettingsSubSection>
+
+              <SettingsSubSection
+                title="Stilla vinnutíma"
+                subSectionKey="calendar-working-hours"
+                openSubSection={openSubSection}
+                onToggle={handleSubSectionToggle}
+              >
+                <div className="space-y-4">
+                  <label className="flex items-center gap-3 rounded-lg border border-gray-200 p-3">
+                    <input
+                      type="checkbox"
+                      checked={blockRedDays}
+                      onChange={(e) => setBlockRedDays(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-800">Blokka alla rauða daga (lögbundna frídaga á Íslandi)</span>
+                  </label>
+
+                  <div className="space-y-3">
+                    {weekdayDisplayOrder.map((weekday) => {
+                      const day = workingHours.find((item) => item.weekday === weekday);
+                      if (!day) {
+                        return null;
+                      }
+
+                      return (
+                        <div key={weekday} className="rounded-lg border border-gray-200 p-3">
+                          <div className="grid grid-cols-1 items-center gap-3 md:grid-cols-4">
+                            <p className="font-medium text-gray-900">{weekdayLabels[weekday]}</p>
+
+                            <label className="flex items-center gap-2 text-sm text-gray-700">
+                              <input
+                                type="checkbox"
+                                checked={day.enabled}
+                                onChange={(e) => handleWorkingHourChange(weekday, { enabled: e.target.checked })}
+                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              Virkur dagur
+                            </label>
+
+                            <input
+                              type="time"
+                              value={day.startTime}
+                              onChange={(e) => handleWorkingHourChange(weekday, { startTime: e.target.value })}
+                              disabled={!day.enabled}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-transparent focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                            />
+
+                            <input
+                              type="time"
+                              value={day.endTime}
+                              onChange={(e) => handleWorkingHourChange(weekday, { endTime: e.target.value })}
+                              disabled={!day.enabled}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-transparent focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {!workingHoursValid && (
+                    <p className="text-sm text-red-700">Tímasetningar eru ógildar. Fyrir virka daga þarf upphafstími að vera fyrr en lokatími.</p>
+                  )}
+
+                  <div className="flex justify-end">
+                    <Button onClick={handleSaveScheduling} disabled={!canSaveScheduling}>
+                      {savingScheduling ? 'Vista...' : 'Vista vinnutíma'}
+                    </Button>
+                  </div>
+                </div>
+              </SettingsSubSection>
+
+              <SettingsSubSection
+                title="Þjónustur"
+                subSectionKey="calendar-services"
+                openSubSection={openSubSection}
+                onToggle={handleSubSectionToggle}
+              >
+                <div id="services" className="space-y-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-medium text-gray-900">Þjónustur</p>
+                    <Button type="button" variant="outline" size="sm" onClick={handleRefreshServices} disabled={serviceRefreshing || serviceSaving}>
+                      {serviceRefreshing ? 'Sæki...' : 'Uppfæra lista'}
+                    </Button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-sm text-gray-600">Dragðu þjónustur upp og niður til að velja röð í bókunarlista.</p>
+                    {services.length === 0 ? (
+                      <p className="text-sm text-gray-600">Engar þjónustur skráðar.</p>
+                    ) : (
+                      services.map((service) => (
+                        <div
+                          key={service.id}
+                          draggable={!serviceSaving}
+                          onDragStart={() => setDraggingServiceId(service.id)}
+                          onDragEnd={() => {
+                            setDraggingServiceId(null);
+                            setDragOverServiceId(null);
+                          }}
+                          onDragOver={(event) => {
+                            event.preventDefault();
+                            if (dragOverServiceId !== service.id) {
+                              setDragOverServiceId(service.id);
+                            }
+                          }}
+                          onDrop={(event) => {
+                            event.preventDefault();
+                            void handleServiceDrop(service.id);
+                          }}
+                          className={`rounded-lg border p-3 ${dragOverServiceId === service.id ? 'border-blue-300 bg-blue-50' : 'border-gray-200'}`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-start gap-2">
+                              <span className="cursor-grab text-gray-400" aria-hidden>
+                                ⋮⋮
+                              </span>
+                              <div>
+                                <p className="font-medium text-gray-900">{service.name}</p>
+                                <p className="text-sm text-gray-600">{service.durationMinutes} mínútur</p>
+                                {service.isDefault ? <p className="text-xs text-gray-500">Sjálfgefin þjónusta</p> : null}
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button size="sm" variant="outline" onClick={() => handleEditService(service)}>
+                                Breyta
+                              </Button>
+                              <Button size="sm" variant="secondary" onClick={() => handleDeleteService(service)}>
+                                Eyða
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <form onSubmit={handleSaveService} className="space-y-3 rounded-lg border border-gray-200 p-4">
+                    <p className="text-sm font-medium text-gray-700">{editingServiceId ? 'Breyta þjónustu' : 'Stofna þjónustu'}</p>
+
+                    <input
+                      type="text"
+                      value={serviceName}
+                      onChange={(e) => setServiceName(e.target.value)}
+                      placeholder="Heiti þjónustu"
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder-gray-400"
+                    />
+
+                    <input
+                      type="number"
+                      min={5}
+                      max={240}
+                      value={serviceDuration}
+                      onChange={(e) => setServiceDuration(Number(e.target.value))}
+                      placeholder="Lengd í mínútum"
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder-gray-400"
+                    />
+
+                    {serviceError ? (
+                      <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{serviceError}</div>
+                    ) : null}
+
+                    {serviceSuccess ? (
+                      <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{serviceSuccess}</div>
+                    ) : null}
+
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Button type="submit" disabled={serviceSaving}>
+                        {serviceSaving ? 'Vista...' : editingServiceId ? 'Vista breytingar' : 'Stofna þjónustu'}
+                      </Button>
+                      {editingServiceId ? (
+                        <Button type="button" variant="outline" onClick={handleResetServiceForm}>
+                          Hætta við
+                        </Button>
+                      ) : null}
+                    </div>
+                  </form>
+                </div>
+              </SettingsSubSection>
+            </div>
+          )}
+        </SettingsSection>
+
+        <SettingsSection
+          title="Skjólstæðingar"
+          sectionKey="clients"
+          openSection={openSection}
+          onToggle={handleSectionToggle}
+          className="order-3"
+        >
             {loading ? (
               <p className="text-gray-600">Hleður...</p>
             ) : (
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <p className="text-sm text-gray-600">Dragðu þjónustur upp og niður til að velja röð í bókunarlista.</p>
-                  {services.length === 0 ? (
-                    <p className="text-sm text-gray-600">Engar þjónustur skráðar.</p>
-                  ) : (
-                    services.map((service) => (
-                      <div
-                        key={service.id}
-                        draggable={!serviceSaving}
-                        onDragStart={() => setDraggingServiceId(service.id)}
-                        onDragEnd={() => {
-                          setDraggingServiceId(null);
-                          setDragOverServiceId(null);
-                        }}
-                        onDragOver={(event) => {
-                          event.preventDefault();
-                          if (dragOverServiceId !== service.id) {
-                            setDragOverServiceId(service.id);
+                <SettingsSubSection
+                  title="Skjólstæðingayfirlit - sýnileiki í haus"
+                  subSectionKey="clients-overview"
+                  openSubSection={openSubSection}
+                  onToggle={handleSubSectionToggle}
+                >
+                  <div className="space-y-3">
+                    <div className="space-y-2 text-sm text-gray-800">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={clientOverviewVisibility.showKennitala}
+                          onChange={(event) =>
+                            setClientOverviewVisibility((current) => ({ ...current, showKennitala: event.target.checked }))
+                          }
+                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        Sýna kennitölu
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={clientOverviewVisibility.showPhone}
+                          onChange={(event) =>
+                            setClientOverviewVisibility((current) => ({ ...current, showPhone: event.target.checked }))
+                          }
+                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        Sýna símanúmer
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={clientOverviewVisibility.showFlags}
+                          onChange={(event) =>
+                            setClientOverviewVisibility((current) => ({ ...current, showFlags: event.target.checked }))
+                          }
+                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        Sýna flögg
+                      </label>
+                    </div>
+                    <div className="flex justify-end">
+                      <Button type="button" onClick={handleSaveClientOverview} disabled={!canSaveClientOverview}>
+                        {savingClientOverview ? 'Vista...' : 'Vista sýnileika'}
+                      </Button>
+                    </div>
+                  </div>
+                </SettingsSubSection>
+
+                <SettingsSubSection
+                  title="Flögg"
+                  subSectionKey="clients-flags"
+                  openSubSection={openSubSection}
+                  onToggle={handleSubSectionToggle}
+                >
+                  <div id="flags" className="space-y-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-medium text-gray-900">Flögg</p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleRefreshFlags}
+                        disabled={refreshingFlags || savingFlags}
+                      >
+                        {refreshingFlags ? 'Sæki...' : 'Uppfæra lista'}
+                      </Button>
+                    </div>
+
+                    <p className="text-xs text-gray-500">Öll flögg eru í sama lista og má breyta, eyða og raða.</p>
+
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <input
+                        type="text"
+                        value={customFlagLabel}
+                        onChange={(e) => setCustomFlagLabel(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddFlag();
                           }
                         }}
-                        onDrop={(event) => {
-                          event.preventDefault();
-                          void handleServiceDrop(service.id);
-                        }}
-                        className={`rounded-lg border p-3 ${dragOverServiceId === service.id ? 'border-blue-300 bg-blue-50' : 'border-gray-200'}`}
+                        placeholder="Nýtt flagg (t.d. Blóðþrýstingur)"
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder-gray-400"
+                      />
+                      <select
+                        value={customFlagIcon}
+                        onChange={(e) => setCustomFlagIcon(e.target.value)}
+                        className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900"
+                        aria-label="Velja icon"
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-start gap-2">
+                        {clinicalFlagIconOptions.map((icon) => (
+                          <option key={icon} value={icon}>{icon}</option>
+                        ))}
+                      </select>
+                      <Button type="button" variant="outline" onClick={handleAddFlag}>
+                        {editingFlagLabel ? 'Vista breytingar' : 'Bæta við'}
+                      </Button>
+                      {editingFlagLabel ? (
+                        <Button type="button" variant="secondary" onClick={handleCancelFlagEdit}>
+                          Hætta við
+                        </Button>
+                      ) : null}
+                    </div>
+
+                    <div className="space-y-2">
+                      {customFlags.map((flag) => (
+                        <div
+                          key={flag.label}
+                          draggable={!savingFlags && !refreshingFlags}
+                          onDragStart={(event) => {
+                            event.dataTransfer.effectAllowed = 'move';
+                            event.dataTransfer.setData('text/plain', flag.label);
+                            setDraggingFlagLabel(flag.label);
+                          }}
+                          onDragOver={(event) => {
+                            event.preventDefault();
+                            if (dragOverFlagLabel !== flag.label) {
+                              setDragOverFlagLabel(flag.label);
+                            }
+                          }}
+                          onDragLeave={() => {
+                            if (dragOverFlagLabel === flag.label) {
+                              setDragOverFlagLabel(null);
+                            }
+                          }}
+                          onDrop={(event) => {
+                            event.preventDefault();
+                            const droppedLabel = event.dataTransfer.getData('text/plain');
+                            handleFlagDrop(flag.label, droppedLabel || undefined);
+                          }}
+                          onDragEnd={() => {
+                            setDraggingFlagLabel(null);
+                            setDragOverFlagLabel(null);
+                          }}
+                          className={`flex items-center justify-between gap-3 rounded-lg border p-3 ${
+                            dragOverFlagLabel === flag.label ? 'border-blue-300 bg-blue-50' : 'border-gray-200'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
                             <span className="cursor-grab text-gray-400" aria-hidden>
                               ⋮⋮
                             </span>
-                            <div>
-                            <p className="font-medium text-gray-900">{service.name}</p>
-                            <p className="text-sm text-gray-600">{service.durationMinutes} mínútur</p>
-                            {service.isDefault ? (
-                              <p className="text-xs text-gray-500">Sjálfgefin þjónusta</p>
-                            ) : null}
-                            </div>
+                            <p className="text-sm text-gray-800">{flag.icon} {flag.label}</p>
                           </div>
-                          <div className="flex gap-2">
-                            <Button size="sm" variant="outline" onClick={() => handleEditService(service)}>
+                          <div className="flex items-center gap-2">
+                            <Button type="button" size="sm" variant="outline" onClick={() => handleEditFlag(flag)}>
                               Breyta
                             </Button>
-                            <Button size="sm" variant="secondary" onClick={() => handleDeleteService(service)}>
-                              Eyða
+                            <Button type="button" size="sm" variant="secondary" onClick={() => handleRemoveFlag(flag)}>
+                              Fjarlægja
                             </Button>
                           </div>
                         </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                <form onSubmit={handleSaveService} className="rounded-lg border border-gray-200 p-4 space-y-3">
-                  <p className="text-sm font-medium text-gray-700">
-                    {editingServiceId ? 'Breyta þjónustu' : 'Stofna þjónustu'}
-                  </p>
-
-                  <input
-                    type="text"
-                    value={serviceName}
-                    onChange={(e) => setServiceName(e.target.value)}
-                    placeholder="Heiti þjónustu"
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder-gray-400"
-                  />
-
-                  <input
-                    type="number"
-                    min={5}
-                    max={240}
-                    value={serviceDuration}
-                    onChange={(e) => setServiceDuration(Number(e.target.value))}
-                    placeholder="Lengd í mínútum"
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder-gray-400"
-                  />
-
-                  {serviceError ? (
-                    <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                      {serviceError}
+                      ))}
                     </div>
-                  ) : null}
-
-                  {serviceSuccess ? (
-                    <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-                      {serviceSuccess}
-                    </div>
-                  ) : null}
-
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <Button type="submit" disabled={serviceSaving}>
-                      {serviceSaving ? 'Vista...' : editingServiceId ? 'Vista breytingar' : 'Stofna þjónustu'}
-                    </Button>
-                    {editingServiceId ? (
-                      <Button type="button" variant="outline" onClick={handleResetServiceForm}>
-                        Hætta við
-                      </Button>
+                    {customFlags.length > 0 ? (
+                      <p className="text-xs text-gray-500">Dragðu flögg upp eða niður til að breyta röðun.</p>
                     ) : null}
-                  </div>
-                </form>
-              </div>
-            )}
-            </CardContent>
-          </Card>
-        </div>
 
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between gap-2">
-              <CardTitle>Flögg</CardTitle>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleRefreshFlags}
-                disabled={refreshingFlags || savingFlags}
-              >
-                {refreshingFlags ? 'Sæki...' : 'Uppfæra lista'}
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <p className="text-gray-600">Hleður...</p>
-            ) : (
-              <div className="space-y-4">
-                <p className="text-xs text-gray-500">Öll flögg eru í sama lista og má breyta, eyða og raða.</p>
-
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <input
-                    type="text"
-                    value={customFlagLabel}
-                    onChange={(e) => setCustomFlagLabel(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddFlag();
-                      }
-                    }}
-                    placeholder="Nýtt flagg (t.d. Blóðþrýstingur)"
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder-gray-400"
-                  />
-                  <select
-                    value={customFlagIcon}
-                    onChange={(e) => setCustomFlagIcon(e.target.value)}
-                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900"
-                    aria-label="Velja icon"
-                  >
-                    {clinicalFlagIconOptions.map((icon) => (
-                      <option key={icon} value={icon}>{icon}</option>
-                    ))}
-                  </select>
-                  <Button type="button" variant="outline" onClick={handleAddFlag}>
-                    {editingFlagLabel ? 'Vista breytingar' : 'Bæta við'}
-                  </Button>
-                  {editingFlagLabel ? (
-                    <Button type="button" variant="secondary" onClick={handleCancelFlagEdit}>
-                      Hætta við
-                    </Button>
-                  ) : null}
-                </div>
-
-                <div className="space-y-2">
-                  {customFlags.map((flag) => (
-                      <div
-                        key={flag.label}
-                        draggable={!savingFlags && !refreshingFlags}
-                        onDragStart={(event) => {
-                          event.dataTransfer.effectAllowed = 'move';
-                          event.dataTransfer.setData('text/plain', flag.label);
-                          setDraggingFlagLabel(flag.label);
-                        }}
-                        onDragOver={(event) => {
-                          event.preventDefault();
-                          if (dragOverFlagLabel !== flag.label) {
-                            setDragOverFlagLabel(flag.label);
-                          }
-                        }}
-                        onDragLeave={() => {
-                          if (dragOverFlagLabel === flag.label) {
-                            setDragOverFlagLabel(null);
-                          }
-                        }}
-                        onDrop={(event) => {
-                          event.preventDefault();
-                          const droppedLabel = event.dataTransfer.getData('text/plain');
-                          handleFlagDrop(flag.label, droppedLabel || undefined);
-                        }}
-                        onDragEnd={() => {
-                          setDraggingFlagLabel(null);
-                          setDragOverFlagLabel(null);
-                        }}
-                        className={`flex items-center justify-between gap-3 rounded-lg border p-3 ${
-                          dragOverFlagLabel === flag.label ? 'border-blue-300 bg-blue-50' : 'border-gray-200'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="cursor-grab text-gray-400" aria-hidden>
-                            ⋮⋮
-                          </span>
-                          <p className="text-sm text-gray-800">{flag.icon} {flag.label}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button type="button" size="sm" variant="outline" onClick={() => handleEditFlag(flag)}>
-                            Breyta
-                          </Button>
-                          <Button type="button" size="sm" variant="secondary" onClick={() => handleRemoveFlag(flag)}>
-                            Fjarlægja
-                          </Button>
-                        </div>
+                    {flagError ? (
+                      <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                        {flagError}
                       </div>
-                  ))}
-                </div>
-                {customFlags.length > 0 ? (
-                  <p className="text-xs text-gray-500">Dragðu flögg upp eða niður til að breyta röðun.</p>
-                ) : null}
+                    ) : null}
 
-                {flagError ? (
-                  <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                    {flagError}
-                  </div>
-                ) : null}
-
-                {flagSuccess ? (
-                  <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-                    {flagSuccess}
-                  </div>
-                ) : null}
-
-                <div className="flex justify-end">
-                  <Button onClick={handleSaveFlags} disabled={!canSaveFlags}>
-                    {savingFlags ? 'Vista...' : 'Vista flögg'}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Sjálfgefinn vinnutími</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <p className="text-gray-600">Hleður...</p>
-            ) : (
-              <div className="space-y-4">
-                <label className="flex items-center gap-3 rounded-lg border border-gray-200 p-3">
-                  <input
-                    type="checkbox"
-                    checked={blockRedDays}
-                    onChange={(e) => setBlockRedDays(e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-800">Blokka alla rauða daga (lögbundna frídaga á Íslandi)</span>
-                </label>
-
-                <div className="space-y-3">
-                  {weekdayDisplayOrder.map((weekday) => {
-                    const day = workingHours.find((item) => item.weekday === weekday);
-                    if (!day) {
-                      return null;
-                    }
-
-                    return (
-                      <div key={weekday} className="rounded-lg border border-gray-200 p-3">
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-center">
-                          <p className="font-medium text-gray-900">{weekdayLabels[weekday]}</p>
-
-                          <label className="flex items-center gap-2 text-sm text-gray-700">
-                            <input
-                              type="checkbox"
-                              checked={day.enabled}
-                              onChange={(e) => handleWorkingHourChange(weekday, { enabled: e.target.checked })}
-                              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                            />
-                            Virkur dagur
-                          </label>
-
-                          <input
-                            type="time"
-                            value={day.startTime}
-                            onChange={(e) => handleWorkingHourChange(weekday, { startTime: e.target.value })}
-                            disabled={!day.enabled}
-                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-transparent focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                          />
-
-                          <input
-                            type="time"
-                            value={day.endTime}
-                            onChange={(e) => handleWorkingHourChange(weekday, { endTime: e.target.value })}
-                            disabled={!day.enabled}
-                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-transparent focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                          />
-                        </div>
+                    {flagSuccess ? (
+                      <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+                        {flagSuccess}
                       </div>
-                    );
-                  })}
-                </div>
+                    ) : null}
 
-                {!workingHoursValid && (
-                  <p className="text-sm text-red-700">Tímasetningar eru ógildar. Fyrir virka daga þarf upphafstími að vera fyrr en lokatími.</p>
-                )}
-
-                <div className="flex justify-end">
-                  <Button onClick={handleSaveScheduling} disabled={!canSaveScheduling}>
-                    {savingScheduling ? 'Vista...' : 'Vista vinnutíma'}
-                  </Button>
-                </div>
+                    <div className="flex justify-end">
+                      <Button onClick={handleSaveFlags} disabled={!canSaveFlags}>
+                        {savingFlags ? 'Vista...' : 'Vista flögg'}
+                      </Button>
+                    </div>
+                  </div>
+                </SettingsSubSection>
               </div>
             )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Tilkynningar</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <p className="text-gray-600">Hleður...</p>
-            ) : (
-              <div className="rounded-lg border border-gray-200 p-4">
-                <p className="font-medium text-gray-900">Áminningar provider</p>
-                <p className="text-sm text-gray-700 mt-1">
-                  Staða: {remindersConfigured ? 'Configured' : 'Missing'}
-                </p>
-                <p className="text-xs text-gray-500 mt-2">Read-only í MVP.</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        </SettingsSection>
       </main>
     </div>
   );

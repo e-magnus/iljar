@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/Card';
 import { setSessionTokens } from '@/lib/auth/session';
+import { resolveStoredStartPage } from '@/components/ui/ThemeInitializer';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -35,9 +36,8 @@ export default function LoginPage() {
 
       if (res.ok) {
         setSessionTokens(data.accessToken, data.refreshToken);
-        
-        // Redirect to dashboard
-        router.push('/dashboard');
+
+        router.push(resolveStoredStartPage());
       } else {
         if (data.requires2FA) {
           setRequires2FA(true);

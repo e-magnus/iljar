@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { DashboardNav } from "@/components/dashboard/DashboardNav";
+import { MobileBackButton } from "@/components/ui/MobileBackButton";
+import { ThemeInitializer } from "@/components/ui/ThemeInitializer";
 
 export const metadata: Metadata = {
   title: "iljar",
@@ -14,8 +16,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="is">
-      <body className="antialiased pb-20 lg:pb-0">
+      <body className="antialiased pt-12 pb-20 lg:pt-0 lg:pb-0">
+        <ThemeInitializer />
         <DashboardNav />
+        <MobileBackButton />
         {children}
       </body>
     </html>

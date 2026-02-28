@@ -42,8 +42,31 @@ interface Client {
   name: string;
   phone: string;
   kennitala?: string | null;
+  clinicalFlags?: string[];
+  customClinicalFlags?: string[];
   contactNote?: string | null;
 }
+
+interface ClientOverviewVisibility {
+  showKennitala: boolean;
+  showPhone: boolean;
+  showFlags: boolean;
+}
+
+const defaultClientOverviewVisibility: ClientOverviewVisibility = {
+  showKennitala: true,
+  showPhone: true,
+  showFlags: true,
+};
+
+const builtInFlagLabels: Record<string, string> = {
+  ANTICOAGULANT: '🩸 Blóðþynning',
+  DIABETES: '🧪 Sykursýki',
+  ALLERGY: '⚠️ Ofnæmi',
+  NEUROPATHY: '🦶 Taugakvilli',
+  PACEMAKER: '❤️ Gangráður',
+  OTHER: 'ℹ️ Annað',
+};
 
 interface TreatmentPhoto {
   file: File;
@@ -118,13 +141,15 @@ export default function ClientDetailPage() {
   const [showOlderVisits, setShowOlderVisits] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [overviewVisibility, setOverviewVisibility] = useState<ClientOverviewVisibility>(defaultClientOverviewVisibility);
 
   useEffect(() => {
     async function fetchHistory() {
       try {
-        const [clientRes, appointmentsRes] = await Promise.all([
+        const [clientRes, appointmentsRes, settingsRes] = await Promise.all([
           authFetch(`/api/clients/${params.id}`),
           authFetch(`/api/appointments?clientId=${params.id}`),
+          authFetch('/api/settings'),
         ]);
 
         if (clientRes.status === 404) {
@@ -140,6 +165,7 @@ export default function ClientDetailPage() {
 
         const clientData = await clientRes.json();
         const appointmentsData = await appointmentsRes.json();
+        const settingsData = await settingsRes.json().catch(() => null);
 
         const appointmentItems: Appointment[] = appointmentsData.appointments ?? [];
 
@@ -147,6 +173,16 @@ export default function ClientDetailPage() {
         setClient(fetchedClient);
         setMemoText(fetchedClient?.contactNote ?? '');
         setAppointments(appointmentItems);
+        const nextOverview = settingsData?.clients?.overview;
+        if (nextOverview) {
+          setOverviewVisibility({
+            showKennitala: Boolean(nextOverview.showKennitala),
+            showPhone: Boolean(nextOverview.showPhone),
+            showFlags: Boolean(nextOverview.showFlags),
+          });
+        } else {
+          setOverviewVisibility(defaultClientOverviewVisibility);
+        }
       } catch (error) {
         console.error('Error fetching client history:', error);
       } finally {
@@ -234,6 +270,8 @@ export default function ClientDetailPage() {
       const data = await response.json();
       const visitId = data?.visit?.id as string | undefined;
 
+      const photoUploadErrors: string[] = [];
+
       if (visitId && treatmentPhotos.length > 0) {
         for (const photo of treatmentPhotos) {
           const urlResponse = await authFetch('/api/photos', {
@@ -250,7 +288,8 @@ export default function ClientDetailPage() {
           if (!urlResponse.ok) {
             const payload = await urlResponse.json().catch(() => null);
             const details = typeof payload?.error === 'string' ? payload.error : 'Failed to prepare photo upload';
-            throw new Error(details);
+            photoUploadErrors.push(details);
+            continue;
           }
 
           const { uploadUrl } = await urlResponse.json();
@@ -261,7 +300,7 @@ export default function ClientDetailPage() {
           });
 
           if (!uploadResponse.ok) {
-            throw new Error('Failed to upload photo');
+            photoUploadErrors.push('Failed to upload photo');
           }
         }
       }
@@ -272,7 +311,14 @@ export default function ClientDetailPage() {
       setSoapP('');
       treatmentPhotos.forEach((photo) => URL.revokeObjectURL(photo.preview));
       setTreatmentPhotos([]);
-      setTreatmentMessage('Meðferð skráð.');
+
+      if (photoUploadErrors.length === 0) {
+        setTreatmentMessage('Meðferð skráð.');
+      } else if (photoUploadErrors.some((error) => error.startsWith('S3 configuration error:'))) {
+        setTreatmentMessage('Meðferð skráð en myndaupphleðsla er óvirk þar til S3 lyklar hafa verið stilltir rétt í .env.');
+      } else {
+        setTreatmentMessage('Meðferð skráð en ekki tókst að hlaða upp öllum myndum.');
+      }
     } catch (error) {
       console.error('Error saving treatment:', error);
       const message = error instanceof Error ? error.message : '';
@@ -368,6 +414,11 @@ export default function ClientDetailPage() {
 
   const latestThreeAppointments = appointments.slice(0, 3);
   const olderAppointments = appointments.slice(3);
+  const activeBuiltInFlags = (client?.clinicalFlags ?? [])
+    .map((flag) => builtInFlagLabels[flag])
+    .filter((flag): flag is string => Boolean(flag));
+  const activeCustomFlags = client?.customClinicalFlags ?? [];
+  const visibleFlags = [...activeBuiltInFlags, ...activeCustomFlags];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -377,11 +428,25 @@ export default function ClientDetailPage() {
           {client && (
             <div className="mt-1 space-y-2">
               <p className="text-sm font-medium text-gray-900">{client.name}</p>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
-                <span>KT: {client.kennitala ?? '—'}</span>
-                <span>•</span>
-                <a href={`tel:${formatPhone(client.phone)}`} className="font-medium text-blue-700">Sími: {client.phone}</a>
-              </div>
+              {(overviewVisibility.showKennitala || overviewVisibility.showPhone) && (
+                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                  {overviewVisibility.showKennitala && <span>KT: {client.kennitala ?? '—'}</span>}
+                  {overviewVisibility.showKennitala && overviewVisibility.showPhone && <span>•</span>}
+                  {overviewVisibility.showPhone && (
+                    <a href={`tel:${formatPhone(client.phone)}`} className="font-medium text-blue-700">Sími: {client.phone}</a>
+                  )}
+                </div>
+              )}
+
+              {overviewVisibility.showFlags && visibleFlags.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {visibleFlags.map((flag) => (
+                    <span key={flag} className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] text-blue-700">
+                      {flag}
+                    </span>
+                  ))}
+                </div>
+              )}
 
               <div>
                 <Link href={`/clients/${client.id}/edit`}>
