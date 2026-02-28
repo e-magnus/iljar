@@ -14,6 +14,21 @@ model User {
   id            String    @id @default(cuid())
   email         String    @unique
   passwordHash  String
+  fullName      String?
+  phone         String?
+  kennitala     String?   @unique
+  companyName   String?
+  streetAddress String?
+  addressLine2  String?
+  postalCode    String?
+  city          String?
+  country       String?
+  invoiceEmail  String?
+  bankAccount   String?
+  iban          String?
+  swiftCode     String?
+  vatNumber     String?
+  invoiceNotes  String?
   totpSecret    String?
   totpEnabled   Boolean   @default(false)
   createdAt     DateTime  @default(now())

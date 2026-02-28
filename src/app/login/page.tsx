@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/Card';
 import { setSessionTokens } from '@/lib/auth/session';
@@ -9,6 +9,10 @@ import { resolveStoredStartPage } from '@/components/ui/ThemeInitializer';
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const loggedOut = searchParams.get('loggedOut') === '1';
+  const sessionExpired = searchParams.get('sessionExpired') === '1';
+  const authRequired = searchParams.get('authRequired') === '1';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [totpToken, setTotpToken] = useState('');
@@ -64,6 +68,24 @@ export default function LoginPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {loggedOut && (
+              <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-800 text-sm">
+                Þú hefur verið skráð/ur út.
+              </div>
+            )}
+
+            {sessionExpired && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">
+                Innskráning rann út. Vinsamlegast skráðu þig inn aftur.
+              </div>
+            )}
+
+            {authRequired && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">
+                Þú þarft að vera innskráð/ur til að skoða þessa síðu.
+              </div>
+            )}
+
             {error && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm">
                 {error}

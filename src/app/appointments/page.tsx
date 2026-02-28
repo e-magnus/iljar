@@ -5,9 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
-import { PulseMetrics } from '@/components/dashboard/PulseMetrics';
 import { authFetch } from '@/lib/api/client';
-import { formatDDMM, formatDDMMYY, formatDDMMYYYY, formatIcelandicDayLabel, formatIcelandicDayLabelShort, formatTimeHHMM } from '@/lib/format/date';
+import { formatDDMM, formatDDMMYYYY, formatIcelandicDayLabel, formatIcelandicDayLabelShort, formatTimeHHMM } from '@/lib/format/date';
 
 interface Appointment {
   id: string;
@@ -19,12 +18,6 @@ interface Appointment {
     id: string;
     name: string;
   };
-}
-
-interface WeekMetrics {
-  weekBooked: number;
-  weekNoShow: number;
-  weekFreeSlots: number;
 }
 
 interface WorkingHour {
@@ -62,55 +55,9 @@ function getWeekStart(date: Date): Date {
   return value;
 }
 
-function formatShortDate(dateString: string): string {
-  return formatDDMMYY(dateString);
-}
-
-function getIsoWeekNumber(dateString: string): number {
-  const date = new Date(dateString);
-  const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = utcDate.getUTCDay() || 7;
-  utcDate.setUTCDate(utcDate.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(utcDate.getUTCFullYear(), 0, 1));
-  return Math.ceil((((utcDate.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-}
-
-function getWeekLabel(week: { offset: number; start: string; end: string }): string {
-  const range = `(${formatShortDate(week.start)} - ${formatShortDate(week.end)})`;
-
-  if (week.offset === 0) return `Þessi vika ${range}`;
-  if (week.offset === 1) return `Næsta vika ${range}`;
-  if (week.offset === 2) return `Þar næsta vika ${range}`;
-  if (week.offset === -1) return `Síðasta vika ${range}`;
-  if (week.offset === -2) return `Þar síðasta vika ${range}`;
-
-  const isoWeek = getIsoWeekNumber(week.start);
-  return `Vika ${String(isoWeek).padStart(2, '0')} ${range}`;
-}
-
-function getWeekOffsetFromDate(selectedWeekStart: Date): number {
-  const currentWeekStart = getWeekStart(new Date());
-  const ms = selectedWeekStart.getTime() - currentWeekStart.getTime();
-  return Math.round(ms / (7 * 24 * 60 * 60 * 1000));
-}
-
 function parseTimeToMinutes(value: string): number {
   const [hours, minutes] = value.split(':').map(Number);
   return hours * 60 + minutes;
-}
-
-function formatBookedService(appointment: Pick<Appointment, 'type' | 'startTime' | 'endTime'>): string {
-  const serviceName = appointment.type ?? 'Almenn meðferð';
-  const durationMinutes = Math.max(
-    0,
-    Math.round((new Date(appointment.endTime).getTime() - new Date(appointment.startTime).getTime()) / 60000)
-  );
-
-  if (durationMinutes <= 0) {
-    return serviceName;
-  }
-
-  return `${serviceName} (${durationMinutes} mín)`;
 }
 
 export default function AppointmentsPage() {
@@ -132,12 +79,6 @@ export default function AppointmentsPage() {
   const [suppressNextColumnClick, setSuppressNextColumnClick] = useState(false);
   const [unblockingTimeOffId, setUnblockingTimeOffId] = useState<string | null>(null);
   const [workingHours, setWorkingHours] = useState<WorkingHour[]>([]);
-  const [weekLabel, setWeekLabel] = useState<string>('Þessi vika');
-  const [weekMetrics, setWeekMetrics] = useState<WeekMetrics>({
-    weekBooked: 0,
-    weekNoShow: 0,
-    weekFreeSlots: 0,
-  });
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const blockLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unblockLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -176,32 +117,10 @@ export default function AppointmentsPage() {
     fetchWorkingHours();
   }, []);
 
-  useEffect(() => {
-    async function fetchWeekSummary() {
-      try {
-        const weekOffset = getWeekOffsetFromDate(weekStart);
-        const res = await authFetch(`/api/me/summary?weekOffset=${weekOffset}`);
-        if (!res.ok) {
-          return;
-        }
-
-        const data = await res.json();
-        setWeekLabel(getWeekLabel(data.week));
-        setWeekMetrics({
-          weekBooked: data.metrics?.weekBooked ?? 0,
-          weekNoShow: data.metrics?.weekNoShow ?? 0,
-          weekFreeSlots: data.metrics?.weekFreeSlots ?? 0,
-        });
-      } catch (error) {
-        console.error('Error fetching week summary:', error);
-      }
-    }
-
-    fetchWeekSummary();
-  }, [weekStart]);
-
   const slotMinutes = 30;
-  const rowHeight = 44;
+  const rowHeight = 40;
+  const timeColumnWidth = 56;
+  const dayColumnMinWidth = 120;
 
   const allActiveAppointments = appointments
     .filter((appointment) => {
@@ -855,41 +774,20 @@ export default function AppointmentsPage() {
     };
   }, []);
 
-  useEffect(() => {
-    if (window.innerWidth < 768) {
-      setViewMode('day');
-    }
-  }, []);
-
   return (
     <div className="min-h-screen bg-gray-50">
-      <main className="max-w-7xl mx-auto px-4 py-6">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Tímabókanir</h1>
-        </div>
-
-        <Card>
-          <CardContent>
+      <main className="mx-auto max-w-none px-0 py-0 md:max-w-7xl md:px-4 md:py-6">
+        <Card className="rounded-none shadow-none md:rounded-lg md:shadow-md">
+          <CardContent className="px-0 py-0 md:px-6 md:py-4">
             {loading ? (
               <p className="text-gray-600">Hleður...</p>
             ) : (
-              <div className="space-y-4 pb-24 md:pb-0">
+              <div className="pb-24 md:space-y-4 md:pb-0">
                 {appointments.length === 0 && (
-                  <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                  <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800 md:mb-0">
                     Engar bókanir fundust. Smelltu á dagatalssvæði til að bóka tíma.
                   </div>
                 )}
-
-                <div className="md:rounded-none md:border-none md:bg-transparent md:p-0 rounded-lg border border-gray-200 bg-white p-2">
-                  <PulseMetrics
-                    weekLabel={weekLabel}
-                    weekBooked={weekMetrics.weekBooked}
-                    weekNoShow={weekMetrics.weekNoShow}
-                    weekFreeSlots={weekMetrics.weekFreeSlots}
-                    onPreviousWeek={() => shiftWeek(-1)}
-                    onNextWeek={() => shiftWeek(1)}
-                  />
-                </div>
 
                 <div className="hidden md:flex md:flex-wrap md:items-center md:gap-2 rounded-xl border border-gray-200 bg-white p-3">
                   <Button
@@ -911,22 +809,21 @@ export default function AppointmentsPage() {
                   </div>
                 </div>
 
-                <div className="relative overflow-x-auto rounded-xl border border-gray-200 bg-white">
-                  <div className="pointer-events-none absolute inset-y-0 right-0 z-30 w-5 bg-gradient-to-l from-white to-transparent" />
+                <div className="relative -mx-4 overflow-x-auto border-y border-gray-200 bg-white md:mx-0 md:rounded-xl md:border">
                   {touchDraggingAppointmentId && (
                     <div className="md:hidden border-b border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800 flex items-center justify-between gap-2">
                       <span>Veldu nýjan tíma í dagatalinu</span>
                       <Button variant="outline" onClick={() => setTouchDraggingAppointmentId(null)}>Hætta við</Button>
                     </div>
                   )}
-                  <div className={viewMode === 'week' ? 'min-w-[980px]' : 'min-w-[340px]'}>
+                  <div className={viewMode === 'week' ? 'min-w-[860px] md:min-w-[980px]' : 'min-w-[320px] md:min-w-[340px]'}>
                     <div
                       className="sticky top-0 z-20 grid border-b border-gray-200 bg-gray-50 shadow-[0_2px_4px_rgba(15,23,42,0.06)]"
-                      style={{ gridTemplateColumns: `68px repeat(${daysToRender.length}, minmax(130px, 1fr))` }}
+                      style={{ gridTemplateColumns: `${timeColumnWidth}px repeat(${daysToRender.length}, minmax(${dayColumnMinWidth}px, 1fr))` }}
                     >
                       <div className="sticky left-0 z-30 bg-gray-50" />
                       {viewMode === 'day' ? (
-                        <div className="bg-gray-50 px-2 py-3 text-center font-semibold text-gray-700 border-l border-gray-200">
+                        <div className="bg-gray-50 px-1.5 py-2 text-center text-sm font-semibold text-gray-700 border-l border-gray-200 md:px-2 md:py-3 md:text-base">
                           {formatSelectedDayLabel()}
                         </div>
                       ) : (
@@ -938,7 +835,7 @@ export default function AppointmentsPage() {
                               setSelectedDay(startOfDay(day));
                               setViewMode('day');
                             }}
-                            className="bg-gray-50 px-2 py-3 text-center font-semibold text-gray-700 border-l border-gray-200 hover:bg-gray-100"
+                            className="bg-gray-50 px-1.5 py-2 text-center text-sm font-semibold text-gray-700 border-l border-gray-200 hover:bg-gray-100 md:px-2 md:py-3 md:text-base"
                           >
                             {formatDayLabel(day)}
                           </button>
@@ -947,9 +844,9 @@ export default function AppointmentsPage() {
                     </div>
 
                     <div
-                      className="grid"
+                      className="grid min-h-[calc(100dvh-235px)] md:min-h-0"
                       style={{
-                        gridTemplateColumns: `68px repeat(${daysToRender.length}, minmax(130px, 1fr))`,
+                        gridTemplateColumns: `${timeColumnWidth}px repeat(${daysToRender.length}, minmax(${dayColumnMinWidth}px, 1fr))`,
                         height: `${gridHeight}px`,
                       }}
                     >
@@ -957,7 +854,7 @@ export default function AppointmentsPage() {
                         {timeRows.map((label, index) => (
                           <div
                             key={label}
-                            className="absolute left-0 w-full px-2 text-right text-sm font-medium text-gray-700"
+                            className="absolute left-0 w-full px-1 text-right text-[11px] font-medium text-gray-700 md:px-2 md:text-sm"
                             style={{ top: `${index * rowHeight - 10}px` }}
                           >
                             {label}
@@ -1028,7 +925,7 @@ export default function AppointmentsPage() {
                           }}
                           style={{
                             backgroundImage:
-                              'repeating-linear-gradient(to bottom, #f3f4f6 0, #f3f4f6 1px, transparent 1px, transparent 44px)',
+                              `repeating-linear-gradient(to bottom, #f3f4f6 0, #f3f4f6 1px, transparent 1px, transparent ${rowHeight}px)`,
                           }}
                         >
                           {getBlockedSegments(daysToRender[dayIndex]).map((segment, segmentIndex) => (
@@ -1042,7 +939,7 @@ export default function AppointmentsPage() {
                           {getTimeOffSegments(daysToRender[dayIndex]).map((segment) => (
                             <div
                               key={`${daysToRender[dayIndex].toISOString()}-timeoff-${segment.id}`}
-                              className={`absolute left-0 right-0 bg-amber-300/55 ${unblockingTimeOffId === segment.id ? 'animate-pulse' : ''}`}
+                              className={`absolute left-0.5 right-0.5 rounded-md bg-amber-300/55 ${unblockingTimeOffId === segment.id ? 'animate-pulse' : ''}`}
                               style={{ top: `${segment.top}px`, height: `${segment.height}px` }}
                               onMouseDown={(event) => {
                                 event.preventDefault();
@@ -1085,7 +982,7 @@ export default function AppointmentsPage() {
 
                             return (
                               <div
-                                className="pointer-events-none absolute left-0 right-0 border border-amber-500 bg-amber-200/60"
+                                className="pointer-events-none absolute left-0.5 right-0.5 rounded-md border border-amber-500 bg-amber-200/60"
                                 style={{ top: `${draftSegment.top}px`, height: `${draftSegment.height}px` }}
                               />
                             );
@@ -1113,16 +1010,14 @@ export default function AppointmentsPage() {
                                 onTouchStart={() => startLongPress(appointment.id)}
                                 onTouchEnd={clearLongPress}
                                 onTouchCancel={clearLongPress}
-                                className={`absolute z-10 left-1 right-1 cursor-move rounded-md px-2 py-1 text-white shadow-sm hover:bg-rose-500 ${
+                                className={`absolute z-10 left-0.5 right-0.5 cursor-move rounded-md px-1.5 py-0.5 text-white shadow-sm hover:bg-rose-500 ${
                                   touchDraggingAppointmentId === appointment.id ? 'bg-rose-600 ring-2 ring-blue-500' : 'bg-rose-400'
                                 }`}
                                 style={{ top: `${position.top}px`, height: `${position.height}px` }}
                               >
-                                <p className="truncate text-sm font-semibold">{appointment.client.name}</p>
-                                <p className="text-sm leading-4">
-                                  {formatTime(appointment.startTime)} ({Math.max(Math.round((new Date(appointment.endTime).getTime() - new Date(appointment.startTime).getTime()) / 60000), 15)}m)
+                                <p className="truncate text-xs font-medium leading-4">
+                                  {appointment.client.name} • {formatTime(appointment.startTime)}
                                 </p>
-                                <p className="truncate text-sm leading-4">{formatBookedService(appointment)}</p>
                               </Link>
                             );
                           })}
@@ -1140,23 +1035,13 @@ export default function AppointmentsPage() {
                   <Button variant="outline" onClick={nextRange}>Næsta ▶</Button>
                 </div>
 
-                <div className="md:hidden fixed bottom-0 inset-x-0 z-20 border-t border-gray-200 bg-white/95 backdrop-blur px-4 py-3">
-                  <div className="mx-auto max-w-7xl flex items-center justify-between gap-2">
-                    <Button variant="outline" onClick={previousRange}>Fyrri</Button>
-                    <Button
-                      variant={viewMode === 'day' ? 'primary' : 'outline'}
-                      onClick={() => setViewMode('day')}
-                    >
-                      Dagur
-                    </Button>
-                    <Button
-                      variant={viewMode === 'week' ? 'primary' : 'outline'}
-                      onClick={() => setViewMode('week')}
-                    >
-                      Vika
-                    </Button>
-                    <Button variant="outline" onClick={goToToday}>Í dag</Button>
-                    <Button variant="outline" onClick={nextRange}>Næsta</Button>
+                <div className="md:hidden fixed inset-x-0 bottom-16 z-30 border-t border-gray-200 bg-white/95 backdrop-blur px-4 py-2.5">
+                  <div className="mx-auto flex items-center justify-between gap-3 md:max-w-7xl">
+                    <Button size="sm" className="h-9 w-9 min-h-0 rounded-md p-0 text-sm" variant="outline" onClick={() => shiftWeek(-1)} aria-label="Fyrri vika">◀</Button>
+                    <p className="min-w-0 flex-1 truncate text-center text-sm font-semibold text-gray-700">
+                      {formatWeekLabel()}
+                    </p>
+                    <Button size="sm" className="h-9 w-9 min-h-0 rounded-md p-0 text-sm" variant="outline" onClick={() => shiftWeek(1)} aria-label="Næsta vika">▶</Button>
                   </div>
                 </div>
 

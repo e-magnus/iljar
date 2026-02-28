@@ -38,6 +38,7 @@ async function main() {
     create: {
       email: 'clinician@iljar.is',
       passwordHash,
+      fullName: 'Þórey Kristín Aðalsteinsdóttir',
       totpEnabled: false,
     },
   });

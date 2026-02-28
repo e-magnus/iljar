@@ -5,6 +5,8 @@ import Image from 'next/image';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { authFetch } from '@/lib/api/client';
+import { logoutSession } from '@/lib/auth/session';
+import { useRouter } from 'next/navigation';
 import {
   applyDensity,
   applyFontSize,
@@ -85,11 +87,72 @@ interface ClientOverviewVisibility {
   showFlags: boolean;
 }
 
+interface UserProfile {
+  fullName: string;
+  phone: string;
+  kennitala: string;
+  companyName: string;
+  streetAddress: string;
+  addressLine2: string;
+  postalCode: string;
+  city: string;
+  country: string;
+  invoiceEmail: string;
+  bankAccount: string;
+  iban: string;
+  swiftCode: string;
+  vatNumber: string;
+  invoiceNotes: string;
+}
+
 const defaultClientOverviewVisibility: ClientOverviewVisibility = {
   showKennitala: true,
   showPhone: true,
   showFlags: true,
 };
+
+const defaultUserProfile: UserProfile = {
+  fullName: '',
+  phone: '',
+  kennitala: '',
+  companyName: '',
+  streetAddress: '',
+  addressLine2: '',
+  postalCode: '',
+  city: '',
+  country: '',
+  invoiceEmail: '',
+  bankAccount: '',
+  iban: '',
+  swiftCode: '',
+  vatNumber: '',
+  invoiceNotes: '',
+};
+
+function normalizeUserProfile(input: unknown): UserProfile {
+  if (typeof input !== 'object' || input === null) {
+    return defaultUserProfile;
+  }
+
+  const value = input as Partial<Record<keyof UserProfile, unknown>>;
+  return {
+    fullName: typeof value.fullName === 'string' ? value.fullName : '',
+    phone: typeof value.phone === 'string' ? value.phone : '',
+    kennitala: typeof value.kennitala === 'string' ? value.kennitala : '',
+    companyName: typeof value.companyName === 'string' ? value.companyName : '',
+    streetAddress: typeof value.streetAddress === 'string' ? value.streetAddress : '',
+    addressLine2: typeof value.addressLine2 === 'string' ? value.addressLine2 : '',
+    postalCode: typeof value.postalCode === 'string' ? value.postalCode : '',
+    city: typeof value.city === 'string' ? value.city : '',
+    country: typeof value.country === 'string' ? value.country : '',
+    invoiceEmail: typeof value.invoiceEmail === 'string' ? value.invoiceEmail : '',
+    bankAccount: typeof value.bankAccount === 'string' ? value.bankAccount : '',
+    iban: typeof value.iban === 'string' ? value.iban : '',
+    swiftCode: typeof value.swiftCode === 'string' ? value.swiftCode : '',
+    vatNumber: typeof value.vatNumber === 'string' ? value.vatNumber : '',
+    invoiceNotes: typeof value.invoiceNotes === 'string' ? value.invoiceNotes : '',
+  };
+}
 
 const weekdayLabels: Record<number, string> = {
   0: 'Sunnudagur',
@@ -220,6 +283,7 @@ type SettingsSubSectionKey =
   | 'general-start-page'
   | 'general-density'
   | 'general-font-size'
+  | 'general-profile-billing'
   | 'security-2fa'
   | 'security-password'
   | 'security-notifications'
@@ -294,6 +358,7 @@ function SettingsSubSection({ title, subSectionKey, openSubSection, onToggle, ch
 }
 
 export default function SettingsPage() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [savingBooking, setSavingBooking] = useState(false);
   const [savingScheduling, setSavingScheduling] = useState(false);
@@ -345,6 +410,11 @@ export default function SettingsPage() {
   const [clientOverviewVisibility, setClientOverviewVisibility] = useState<ClientOverviewVisibility>(defaultClientOverviewVisibility);
   const [initialClientOverviewVisibility, setInitialClientOverviewVisibility] = useState<ClientOverviewVisibility>(defaultClientOverviewVisibility);
   const [savingClientOverview, setSavingClientOverview] = useState(false);
+  const [userProfile, setUserProfile] = useState<UserProfile>(defaultUserProfile);
+  const [initialUserProfile, setInitialUserProfile] = useState<UserProfile>(defaultUserProfile);
+  const [savingUserProfile, setSavingUserProfile] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [profileSuccess, setProfileSuccess] = useState('');
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -352,6 +422,7 @@ export default function SettingsPage() {
   const [savingPassword, setSavingPassword] = useState(false);
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [loggingOut, setLoggingOut] = useState(false);
   const [appTheme, setAppTheme] = useState<AppTheme>('light');
   const [appLanguage, setAppLanguage] = useState<AppLanguage>('is');
   const [appStartPage, setAppStartPage] = useState<AppStartPage>('/dashboard');
@@ -385,6 +456,8 @@ export default function SettingsPage() {
   const canSaveFlags = hasFlagChanges && !savingFlags;
   const hasClientOverviewChanges = JSON.stringify(clientOverviewVisibility) !== JSON.stringify(initialClientOverviewVisibility);
   const canSaveClientOverview = hasClientOverviewChanges && !savingClientOverview;
+  const hasUserProfileChanges = JSON.stringify(userProfile) !== JSON.stringify(initialUserProfile);
+  const canSaveUserProfile = hasUserProfileChanges && !savingUserProfile;
 
   const bookingValidationMessage = useMemo(() => {
     if (!slotLengthValid) {
@@ -411,12 +484,16 @@ export default function SettingsPage() {
     async function fetchSettings() {
       try {
         setError('');
-        const [settingsRes, servicesRes] = await Promise.all([
+        const [settingsRes, servicesRes, profileRes] = await Promise.all([
           authFetch('/api/settings'),
           authFetch('/api/services'),
+          authFetch('/api/me/profile'),
         ]);
-        const data = await settingsRes.json();
-        const servicesData = await servicesRes.json();
+        const [data, servicesData, profileData] = await Promise.all([
+          settingsRes.json(),
+          servicesRes.json(),
+          profileRes.json(),
+        ]);
 
         if (!settingsRes.ok) {
           setError(data.error ?? 'Gat ekki sótt stillingar.');
@@ -447,6 +524,15 @@ export default function SettingsPage() {
         const overviewVisibility = settings.clients?.overview ?? defaultClientOverviewVisibility;
         setClientOverviewVisibility(overviewVisibility);
         setInitialClientOverviewVisibility(overviewVisibility);
+
+        if (profileRes.ok) {
+          const normalizedProfile = normalizeUserProfile(profileData.profile);
+          setUserProfile(normalizedProfile);
+          setInitialUserProfile(normalizedProfile);
+          setProfileError('');
+        } else {
+          setProfileError(profileData.error ?? 'Gat ekki sótt prófílupplýsingar.');
+        }
       } catch {
         setError('Villa kom upp við að tengjast þjóni.');
       } finally {
@@ -469,6 +555,19 @@ export default function SettingsPage() {
 
     return () => window.clearTimeout(timeout);
   }, [serviceError, serviceSuccess]);
+
+  useEffect(() => {
+    if (!profileError && !profileSuccess) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setProfileError('');
+      setProfileSuccess('');
+    }, 4000);
+
+    return () => window.clearTimeout(timeout);
+  }, [profileError, profileSuccess]);
 
   const handleSaveBooking = async () => {
     if (!canSaveBooking) {
@@ -776,6 +875,58 @@ export default function SettingsPage() {
       setPasswordError('Villa kom upp við uppfærslu lykilorðs.');
     } finally {
       setSavingPassword(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    if (loggingOut) {
+      return;
+    }
+
+    setLoggingOut(true);
+    await logoutSession();
+    router.replace('/login?loggedOut=1');
+  };
+
+  const handleUserProfileChange = (field: keyof UserProfile, value: string) => {
+    setUserProfile((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  const handleSaveUserProfile = async () => {
+    if (!canSaveUserProfile) {
+      return;
+    }
+
+    setSavingUserProfile(true);
+    setProfileError('');
+    setProfileSuccess('');
+
+    try {
+      const res = await authFetch('/api/me/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          profile: userProfile,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setProfileError(data.error ?? 'Gat ekki vistað prófíl.');
+        return;
+      }
+
+      const normalized = normalizeUserProfile(data.profile);
+      setUserProfile(normalized);
+      setInitialUserProfile(normalized);
+      setProfileSuccess('Prófíll og reikningsupplýsingar vistaðar.');
+    } catch {
+      setProfileError('Villa kom upp við vistun prófíls.');
+    } finally {
+      setSavingUserProfile(false);
     }
   };
 
@@ -1355,6 +1506,205 @@ export default function SettingsPage() {
               </div>
             </SettingsSubSection>
 
+            <SettingsSubSection
+              title="Prófíll og reikningar"
+              subSectionKey="general-profile-billing"
+              openSubSection={openSubSection}
+              onToggle={handleSubSectionToggle}
+            >
+              <div className="space-y-4">
+                <p className="text-sm text-gray-700">
+                  Skráðu upplýsingar sem nýtast fyrir útgáfu reikninga seinna.
+                </p>
+
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <input
+                    type="text"
+                    value={userProfile.fullName}
+                    onChange={(e) => handleUserProfileChange('fullName', e.target.value)}
+                    placeholder="Fullt nafn"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900"
+                  />
+                  <input
+                    type="text"
+                    value={userProfile.phone}
+                    onChange={(e) => handleUserProfileChange('phone', e.target.value)}
+                    placeholder="Símanúmer"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900"
+                  />
+                  <input
+                    type="text"
+                    value={userProfile.companyName}
+                    onChange={(e) => handleUserProfileChange('companyName', e.target.value)}
+                    placeholder="Fyrirtæki / starfsheiti"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900"
+                  />
+                  <input
+                    type="text"
+                    value={userProfile.kennitala}
+                    onChange={(e) => handleUserProfileChange('kennitala', e.target.value)}
+                    placeholder="Kennitala"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900"
+                  />
+                  <input
+                    type="text"
+                    value={userProfile.streetAddress}
+                    onChange={(e) => handleUserProfileChange('streetAddress', e.target.value)}
+                    placeholder="Heimilisfang"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 md:col-span-2"
+                  />
+                  <input
+                    type="text"
+                    value={userProfile.addressLine2}
+                    onChange={(e) => handleUserProfileChange('addressLine2', e.target.value)}
+                    placeholder="Auka heimilisfang (hæð/íbúð)"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 md:col-span-2"
+                  />
+                  <input
+                    type="text"
+                    value={userProfile.postalCode}
+                    onChange={(e) => handleUserProfileChange('postalCode', e.target.value)}
+                    placeholder="Póstnúmer"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900"
+                  />
+                  <input
+                    type="text"
+                    value={userProfile.city}
+                    onChange={(e) => handleUserProfileChange('city', e.target.value)}
+                    placeholder="Bær"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900"
+                  />
+                  <input
+                    type="text"
+                    value={userProfile.country}
+                    onChange={(e) => handleUserProfileChange('country', e.target.value)}
+                    placeholder="Land"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900"
+                  />
+                  <input
+                    type="email"
+                    value={userProfile.invoiceEmail}
+                    onChange={(e) => handleUserProfileChange('invoiceEmail', e.target.value)}
+                    placeholder="Netfang fyrir reikning"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900"
+                  />
+                  <input
+                    type="text"
+                    value={userProfile.bankAccount}
+                    onChange={(e) => handleUserProfileChange('bankAccount', e.target.value)}
+                    placeholder="Reikningsnúmer"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900"
+                  />
+                  <input
+                    type="text"
+                    value={userProfile.iban}
+                    onChange={(e) => handleUserProfileChange('iban', e.target.value)}
+                    placeholder="IBAN"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900"
+                  />
+                  <input
+                    type="text"
+                    value={userProfile.swiftCode}
+                    onChange={(e) => handleUserProfileChange('swiftCode', e.target.value)}
+                    placeholder="SWIFT/BIC"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900"
+                  />
+                  <input
+                    type="text"
+                    value={userProfile.vatNumber}
+                    onChange={(e) => handleUserProfileChange('vatNumber', e.target.value)}
+                    placeholder="VSK númer"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 md:col-span-2"
+                  />
+                  <textarea
+                    value={userProfile.invoiceNotes}
+                    onChange={(e) => handleUserProfileChange('invoiceNotes', e.target.value)}
+                    placeholder="Athugasemdir á reikningi"
+                    rows={3}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 md:col-span-2"
+                  />
+                </div>
+
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                  <p className="text-sm font-medium text-gray-900">Reikningaforskoðun</p>
+                  <p className="mt-1 text-xs text-gray-600">Svona myndu helstu sendandaupplýsingar birtast á reikningi.</p>
+
+                  {(() => {
+                    const missingFields = [
+                      !userProfile.fullName.trim() ? 'Fullt nafn' : null,
+                      !userProfile.kennitala.trim() ? 'Kennitala' : null,
+                      !userProfile.invoiceEmail.trim() ? 'Reikningsnetfang' : null,
+                      !userProfile.streetAddress.trim() ? 'Heimilisfang' : null,
+                      !userProfile.postalCode.trim() ? 'Póstnúmer' : null,
+                      !userProfile.city.trim() ? 'Bær' : null,
+                      !userProfile.bankAccount.trim() ? 'Reikningsnúmer' : null,
+                    ].filter(Boolean) as string[];
+
+                    if (missingFields.length === 0) {
+                      return (
+                        <div className="mt-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+                          Reikningsupplýsingar virðast nægjanlegar fyrir næsta skref.
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                        Vantar lykilupplýsingar fyrir reikninga: {missingFields.join(', ')}.
+                      </div>
+                    );
+                  })()}
+
+                  <div className="mt-3 grid grid-cols-1 gap-4 text-sm text-gray-800 md:grid-cols-2">
+                    <div className="space-y-1">
+                      <p className="font-medium text-gray-900">Sendandi</p>
+                      <p>{userProfile.fullName || '—'}</p>
+                      <p>{userProfile.companyName || '—'}</p>
+                      <p>{userProfile.streetAddress || '—'}</p>
+                      {userProfile.addressLine2 ? <p>{userProfile.addressLine2}</p> : null}
+                      <p>
+                        {(userProfile.postalCode || '').trim()} {(userProfile.city || '').trim()}
+                        {!userProfile.postalCode && !userProfile.city ? '—' : ''}
+                      </p>
+                      <p>{userProfile.country || '—'}</p>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="font-medium text-gray-900">Greiðsluupplýsingar</p>
+                      <p>Reikningsnetfang: {userProfile.invoiceEmail || '—'}</p>
+                      <p>Sími: {userProfile.phone || '—'}</p>
+                      <p>Kennitala: {userProfile.kennitala || '—'}</p>
+                      <p>Reikningsnúmer: {userProfile.bankAccount || '—'}</p>
+                      <p>IBAN: {userProfile.iban || '—'}</p>
+                      <p>SWIFT/BIC: {userProfile.swiftCode || '—'}</p>
+                      <p>VSK nr.: {userProfile.vatNumber || '—'}</p>
+                    </div>
+                  </div>
+
+                  {userProfile.invoiceNotes ? (
+                    <div className="mt-3 rounded-md border border-gray-200 bg-white p-3 text-sm text-gray-700">
+                      <p className="font-medium text-gray-900">Athugasemd á reikningi</p>
+                      <p className="mt-1 whitespace-pre-wrap">{userProfile.invoiceNotes}</p>
+                    </div>
+                  ) : null}
+                </div>
+
+                {profileError ? (
+                  <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{profileError}</div>
+                ) : null}
+
+                {profileSuccess ? (
+                  <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{profileSuccess}</div>
+                ) : null}
+
+                <div className="flex justify-end">
+                  <Button type="button" onClick={handleSaveUserProfile} disabled={!canSaveUserProfile}>
+                    {savingUserProfile ? 'Vista...' : 'Vista prófíl og reikningsupplýsingar'}
+                  </Button>
+                </div>
+              </div>
+            </SettingsSubSection>
+
             <div className="flex justify-end">
               <Button type="button" variant="secondary" onClick={handleResetGeneralDefaults}>
                 Endurstilla almennar stillingar
@@ -1515,9 +1865,23 @@ export default function SettingsPage() {
                 openSubSection={openSubSection}
                 onToggle={handleSubSectionToggle}
               >
-                <p className="font-medium text-gray-900">Tilkynningar</p>
-                <p className="mt-1 text-sm text-gray-700">Staða áminninga: {remindersConfigured ? 'Configured' : 'Missing'}</p>
-                <p className="mt-2 text-xs text-gray-500">Read-only í MVP.</p>
+                <div className="space-y-4">
+                  <div>
+                    <p className="font-medium text-gray-900">Tilkynningar</p>
+                    <p className="mt-1 text-sm text-gray-700">Staða áminninga: {remindersConfigured ? 'Configured' : 'Missing'}</p>
+                    <p className="mt-2 text-xs text-gray-500">Read-only í MVP.</p>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-200 p-3">
+                    <p className="text-sm font-medium text-gray-900">Útskráning</p>
+                    <p className="mt-1 text-sm text-gray-700">Skráðu þig út af þessu tæki.</p>
+                    <div className="mt-3 flex justify-end">
+                      <Button type="button" variant="outline" onClick={handleLogout} disabled={loggingOut}>
+                        {loggingOut ? 'Skrái út...' : 'Útskrá'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </SettingsSubSection>
             </div>
           )}

@@ -4,6 +4,20 @@ import {
   refreshSessionTokens,
 } from '@/lib/auth/session';
 
+function redirectToLoginOnClient(reason: 'sessionExpired' | 'authRequired' = 'sessionExpired') {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const isLoginPage = window.location.pathname === '/login';
+  if (isLoginPage) {
+    return;
+  }
+
+  const query = reason === 'authRequired' ? 'authRequired=1' : 'sessionExpired=1';
+  window.location.replace(`/login?${query}`);
+}
+
 function isAuthEndpoint(url: string): boolean {
   return (
     url.includes('/api/auth/login') ||
@@ -43,11 +57,13 @@ export async function authFetch(
   const retryAttempted = headers.get('X-Auth-Retry') === '1';
   if (retryAttempted) {
     clearSessionTokens();
+    redirectToLoginOnClient('sessionExpired');
     return response;
   }
 
   const refreshed = await refreshSessionTokens();
   if (!refreshed) {
+    redirectToLoginOnClient('sessionExpired');
     return response;
   }
 

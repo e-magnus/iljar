@@ -1,7 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { getAccessToken, getRefreshToken, logoutSession } from '@/lib/auth/session';
 
 const items = [
   {
@@ -51,6 +53,23 @@ const items = [
 
 export function DashboardNav() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  useEffect(() => {
+    const publicRoutes = ['/', '/login', '/booking', '/privacy', '/terms'];
+    const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`));
+
+    if (isPublicRoute) {
+      return;
+    }
+
+    const accessToken = getAccessToken();
+    const refreshToken = getRefreshToken();
+    if (!accessToken && !refreshToken) {
+      router.replace('/login?authRequired=1');
+    }
+  }, [pathname, router]);
 
   const isActive = (href: string) => {
     if (href === '/dashboard') {
@@ -60,9 +79,19 @@ export function DashboardNav() {
     return pathname === href || pathname.startsWith(`${href}/`);
   };
 
+  const handleLogout = async () => {
+    if (loggingOut) {
+      return;
+    }
+
+    setLoggingOut(true);
+    await logoutSession();
+    router.replace('/login?loggedOut=1');
+  };
+
   return (
     <>
-      <nav className="mb-4 hidden items-center gap-3 rounded-xl border border-gray-200 bg-white p-2 sm:flex" aria-label="Aðalvalmynd efst">
+      <nav className="mb-4 hidden items-center gap-3 rounded-xl border border-gray-200 bg-white p-2 pr-28 sm:flex" aria-label="Aðalvalmynd efst">
         {items.map((item) => (
           <Link
             key={item.href}
@@ -78,6 +107,21 @@ export function DashboardNav() {
           </Link>
         ))}
       </nav>
+
+      <button
+        type="button"
+        onClick={handleLogout}
+        disabled={loggingOut}
+        className="fixed right-4 top-3 z-50 hidden items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm hover:bg-gray-100 hover:text-gray-900 disabled:opacity-60 lg:inline-flex"
+        aria-label="Útskrá"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <path d="M16 17l5-5-5-5" />
+          <path d="M21 12H9" />
+        </svg>
+        {loggingOut ? 'Skrái út...' : 'Útskrá'}
+      </button>
 
       <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-gray-200 bg-white p-2 lg:hidden" aria-label="Neðri valmynd">
         {items.map((item) => (

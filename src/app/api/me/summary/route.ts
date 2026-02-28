@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
       await Promise.all([
         prisma.user.findUnique({
           where: { id: auth.payload.userId },
-          select: { email: true },
+          select: { email: true, fullName: true },
         }),
         prisma.appointment.findFirst({
           where: {
@@ -146,7 +146,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       currentUser: {
-        name: currentUser?.email?.split('@')[0] ?? 'Þórey Kristín Aðalsteinsdóttir',
+        name: currentUser?.fullName ?? currentUser?.email?.split('@')[0] ?? 'Þórey Kristín Aðalsteinsdóttir',
         email: currentUser?.email ?? auth.payload.email ?? null,
       },
       nextAppointment,
