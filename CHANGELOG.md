@@ -6,6 +6,7 @@ All notable changes to the iljar project.
 
 ### Changed
 
+- Appointments mobile week calendar was refactored to a full-bleed layout with denser time grid, slimmer time column/header row, compact week-navigation arrows above bottom nav, simplified appointment chips (name + start time), and rounded blocked-time overlays.
 - `npm run dev` now bootstraps local development automatically by running DB startup/migrations (`db:up`), checking seed presence, and only seeding when data is missing.
 - Added `npm run dev:app` for starting `next dev` without DB/seed bootstrap.
 - Removed manual consent checkbox from visit/client photo upload UI; consent metadata remains recorded automatically on upload.
