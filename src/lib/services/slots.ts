@@ -74,10 +74,6 @@ export async function generateSlots(options: SlotGeneratorOptions): Promise<Time
     },
   });
 
-  if (timeOffs.length > 0) {
-    return []; // Day is blocked by time off
-  }
-
   // Get existing appointments for this day
   const appointments = await prisma.appointment.findMany({
     where: {
@@ -121,7 +117,7 @@ export async function generateSlots(options: SlotGeneratorOptions): Promise<Time
 
   // Filter out slots that overlap with existing appointments
   const availableSlots = allSlots.filter((slot) => {
-    return !appointments.some((appointment) => {
+    const overlapsAppointment = appointments.some((appointment) => {
       // Check if slot overlaps with appointment (including buffer)
       const appointmentStart = new Date(appointment.startTime);
       appointmentStart.setMinutes(appointmentStart.getMinutes() - actualBufferTime);
@@ -134,6 +130,23 @@ export async function generateSlots(options: SlotGeneratorOptions): Promise<Time
         (slot.start <= appointmentStart && slot.end >= appointmentEnd)
       );
     });
+
+    if (overlapsAppointment) {
+      return false;
+    }
+
+    const overlapsTimeOff = timeOffs.some((timeOff) => {
+      const timeOffStart = new Date(timeOff.startDatetime);
+      const timeOffEnd = new Date(timeOff.endDatetime);
+
+      return (
+        (slot.start >= timeOffStart && slot.start < timeOffEnd) ||
+        (slot.end > timeOffStart && slot.end <= timeOffEnd) ||
+        (slot.start <= timeOffStart && slot.end >= timeOffEnd)
+      );
+    });
+
+    return !overlapsTimeOff;
   });
 
   return availableSlots;

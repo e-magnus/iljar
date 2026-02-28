@@ -554,17 +554,42 @@ export default function BookingPage() {
                 </p>
               </div>
             ) : (
-              <select
-                value={selectedServiceId}
-                onChange={(event) => handleServiceSelect(event.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-900 focus:border-transparent focus:ring-2 focus:ring-blue-500"
-              >
-                {services.map((service) => (
-                  <option key={service.id} value={service.id}>
-                    {service.name} — {service.durationMinutes} mín
-                  </option>
-                ))}
-              </select>
+              <>
+                {isMobile ? (
+                  <div className="space-y-2">
+                    {services.map((service) => {
+                      const isSelected = selectedServiceId === service.id;
+                      return (
+                        <button
+                          key={service.id}
+                          type="button"
+                          onClick={() => handleServiceSelect(service.id)}
+                          className={`w-full rounded-lg border-2 px-4 py-3 text-left transition-colors ${
+                            isSelected
+                              ? 'border-blue-600 bg-blue-50 text-blue-800'
+                              : 'border-gray-300 bg-white text-gray-900 hover:border-blue-400'
+                          }`}
+                        >
+                          <p className="font-semibold">{service.name}</p>
+                          <p className="text-sm text-gray-600">{service.durationMinutes} mín</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <select
+                    value={selectedServiceId}
+                    onChange={(event) => handleServiceSelect(event.target.value)}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-900 focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                  >
+                    {services.map((service) => (
+                      <option key={service.id} value={service.id}>
+                        {service.name} — {service.durationMinutes} mín
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
