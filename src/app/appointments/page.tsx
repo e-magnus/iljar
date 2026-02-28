@@ -439,6 +439,30 @@ export default function AppointmentsPage() {
     });
   };
 
+  const isOutsideWorkingHours = (day: Date, minute: number) => {
+    const rule = getWorkingHoursForDay(day);
+    if (!rule || !rule.enabled) {
+      return true;
+    }
+
+    const dayStartMinute = parseTimeToMinutes(rule.startTime);
+    const dayEndMinute = parseTimeToMinutes(rule.endTime);
+    return minute < dayStartMinute || minute >= dayEndMinute;
+  };
+
+  const isMinuteInTimeOff = (day: Date, minute: number) => {
+    const slotStart = new Date(day);
+    slotStart.setHours(Math.floor(minute / 60), minute % 60, 0, 0);
+    const slotEnd = new Date(slotStart);
+    slotEnd.setMinutes(slotEnd.getMinutes() + slotMinutes);
+
+    return timeOffs.some((timeOff) => {
+      const blockStart = new Date(timeOff.startDatetime);
+      const blockEnd = new Date(timeOff.endDatetime);
+      return slotStart < blockEnd && slotEnd > blockStart;
+    });
+  };
+
   const getBlockedSegments = (day: Date) => {
     const rule = getWorkingHoursForDay(day);
 
@@ -635,12 +659,27 @@ export default function AppointmentsPage() {
 
     const container = event.currentTarget;
     const targetMinutes = getSnappedMinutesFromPointer(container, event.clientY);
-    if (isMinuteBlocked(day, targetMinutes)) {
+    if (isMinuteInTimeOff(day, targetMinutes)) {
+      alert('Þetta tímabil er blokkað. Afblokkið fyrst ef þú vilt bóka þennan tíma.');
       return;
     }
+
+    const outsideWorkingHours = isOutsideWorkingHours(day, targetMinutes);
+    if (outsideWorkingHours) {
+      const confirmed = window.confirm('Þú ert að bóka utan vinnutíma. Viltu halda áfram?');
+      if (!confirmed) {
+        return;
+      }
+    }
+
     const targetDate = toDateInputValue(day);
     const targetTime = toTimeLabel(targetMinutes);
-    router.push(`/booking?date=${targetDate}&time=${targetTime}`);
+    const query = new URLSearchParams({
+      date: targetDate,
+      time: targetTime,
+      ...(outsideWorkingHours ? { outsideHours: '1' } : {}),
+    });
+    router.push(`/booking?${query.toString()}`);
   };
 
   const moveAppointmentToSlot = async (appointmentId: string, day: Date, targetMinutes: number) => {

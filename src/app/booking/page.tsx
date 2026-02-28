@@ -100,6 +100,7 @@ export default function BookingPage() {
   const [loadingDayAvailability, setLoadingDayAvailability] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [prefillTime, setPrefillTime] = useState<string>('');
+  const [outsideHoursPrefill, setOutsideHoursPrefill] = useState(false);
   const [prefillClientId, setPrefillClientId] = useState<string>('');
   const [dayAvailability, setDayAvailability] = useState<Record<string, number>>({});
   const [visibleMonth, setVisibleMonth] = useState<Date>(() => monthStart(new Date()));
@@ -141,6 +142,7 @@ export default function BookingPage() {
     const params = new URLSearchParams(window.location.search);
     const queryDate = params.get('date');
     const queryTime = params.get('time');
+    const queryOutsideHours = params.get('outsideHours') === '1';
     const queryClientId = params.get('clientId');
 
     if (queryDate) {
@@ -150,6 +152,10 @@ export default function BookingPage() {
 
     if (queryTime) {
       setPrefillTime(queryTime);
+    }
+
+    if (queryOutsideHours) {
+      setOutsideHoursPrefill(true);
     }
 
     if (queryClientId) {
@@ -290,7 +296,7 @@ export default function BookingPage() {
   }, [selectedService, visibleMonth]);
 
   useEffect(() => {
-    if (!prefillTime || slots.length === 0) {
+    if (!prefillTime || !selectedDate || !selectedService) {
       return;
     }
 
@@ -303,8 +309,23 @@ export default function BookingPage() {
 
     if (matchingSlot) {
       setSelectedSlot(matchingSlot);
+      return;
     }
-  }, [prefillTime, slots]);
+
+    if (outsideHoursPrefill) {
+      const start = new Date(`${selectedDate}T${prefillTime}:00`);
+      if (isNaN(start.getTime())) {
+        return;
+      }
+
+      const end = new Date(start);
+      end.setMinutes(end.getMinutes() + selectedService.durationMinutes);
+      setSelectedSlot({
+        start: start.toISOString(),
+        end: end.toISOString(),
+      });
+    }
+  }, [prefillTime, slots, selectedDate, selectedService, outsideHoursPrefill]);
 
   const handleServiceSelect = (serviceId: string) => {
     setSelectedServiceId(serviceId);
@@ -428,6 +449,9 @@ export default function BookingPage() {
   const visibleMonthDays = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 0).getDate();
   const weekdayHeaders = ['Mán', 'Þri', 'Mið', 'Fim', 'Fös', 'Lau', 'Sun'];
   const progressStep = !selectedServiceId ? 1 : !selectedDate ? 2 : !selectedSlot ? 3 : 4;
+  const selectedSlotIsOutsideWorkingHours = Boolean(
+    selectedSlot && outsideHoursPrefill && !slots.some((slot) => slot.start === selectedSlot.start)
+  );
   const isStepVisible = (step: number) => !isMobile || mobileStep === step;
   const canProceedFromStep = (step: number) => {
     if (step === 1) {
@@ -693,6 +717,11 @@ export default function BookingPage() {
             <CardTitle>3. Veldu tíma (lausir og bókaðir)</CardTitle>
           </CardHeader>
           <CardContent>
+            {selectedSlotIsOutsideWorkingHours && (
+              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                Þú ert að bóka utan vinnutíma: {formatTime(selectedSlot.start)} - {formatTime(selectedSlot.end)}.
+              </div>
+            )}
             {!selectedDate ? (
               <p className="text-sm text-gray-600">Veldu dag í dagatalinu til að sjá tíma.</p>
             ) : loadingSlots || loadingAppointments ? (
@@ -844,6 +873,9 @@ export default function BookingPage() {
                   <p className="text-lg font-semibold">
                     {formatTime(selectedSlot.start)} - {formatTime(selectedSlot.end)}
                   </p>
+                  {selectedSlotIsOutsideWorkingHours && (
+                    <p className="text-sm text-amber-700">Viðvörun: Þetta er utan vinnutíma.</p>
+                  )}
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Skjólstæðingur</p>
